@@ -20,11 +20,15 @@ export const viewport = {
   maximumScale: 1,
 };
 
+const g = globalThis as unknown as { _seeded?: boolean };
+
 async function init() {
+  if (g._seeded) return;
   try {
     await seedCurrenciesAndCategories();
+    g._seeded = true;
   } catch {
-    // already seeded
+    // ignore
   }
 }
 
