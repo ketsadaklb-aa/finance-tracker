@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AmountInput } from "@/components/ui/amount-input";
 import { formatAmount } from "@/lib/utils";
 import { Plus, Wallet, Pencil, Trash2 } from "lucide-react";
 
@@ -169,7 +170,7 @@ export default function AccountsPage() {
             </div>
             <div className="space-y-1.5">
               <Label>{editAccount ? "Balance" : "Opening Balance"}</Label>
-              <Input type="number" step="any" placeholder="0" value={form.balance} onChange={e => setForm(f => ({ ...f, balance: e.target.value }))} />
+              <AmountInput placeholder="0" value={form.balance} onChange={v => setForm(f => ({ ...f, balance: v }))} />
             </div>
             <div className="space-y-1.5">
               <Label>Note (optional)</Label>

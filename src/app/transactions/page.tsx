@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AmountInput } from "@/components/ui/amount-input";
 import { formatAmount, formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { Plus, Trash2, Pencil, Filter, Paperclip, X } from "lucide-react";
@@ -303,8 +304,8 @@ export default function TransactionsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Amount {selectedAccount ? `(${selectedAccount.currency.code})` : ""}</Label>
-                <Input type="number" step="any" min="0.01" placeholder="0" value={form.amount}
-                  onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
+                <AmountInput placeholder="0" value={form.amount}
+                  onChange={v => setForm(f => ({ ...f, amount: v }))} required />
               </div>
               <div className="space-y-1.5">
                 <Label>Date</Label>

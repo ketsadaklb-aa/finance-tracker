@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AmountInput } from "@/components/ui/amount-input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAmount, formatDate, getAgingLabel } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
@@ -469,8 +470,8 @@ export default function PayablesPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Amount</Label>
-              <Input type="number" step="any" min="0.01" placeholder="0" value={form.originalAmount}
-                onChange={e => setForm(f => ({ ...f, originalAmount: e.target.value }))} required />
+              <AmountInput placeholder="0" value={form.originalAmount}
+                onChange={v => setForm(f => ({ ...f, originalAmount: v }))} required />
             </div>
             <div className="space-y-1.5">
               <Label>Description (optional)</Label>
@@ -560,8 +561,8 @@ export default function PayablesPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label>Amount Paid ({p.currency.code})</Label>
-                    <Input type="number" step="any" min="0.01" max={p.remainingAmount} placeholder="0"
-                      value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} />
+                    <AmountInput placeholder="0" value={payForm.amount}
+                      onChange={v => setPayForm(f => ({ ...f, amount: v }))} />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Date</Label>
