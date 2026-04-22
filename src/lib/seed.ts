@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import bcrypt from "bcryptjs";
 
 export async function seedCurrenciesAndCategories() {
   // Seed currencies
@@ -40,6 +41,15 @@ export async function seedCurrenciesAndCategories() {
       where: { name: cat.name },
       update: {},
       create: cat,
+    });
+  }
+
+  // Seed default admin user if none exists
+  const adminExists = await prisma.user.findFirst({ where: { role: "admin" } });
+  if (!adminExists) {
+    const passwordHash = await bcrypt.hash("admin123", 10);
+    await prisma.user.create({
+      data: { username: "admin", name: "Admin", passwordHash, role: "admin" },
     });
   }
 }

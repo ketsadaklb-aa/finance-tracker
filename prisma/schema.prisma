@@ -23,6 +23,41 @@ model Currency {
   createdAt DateTime @default(now())
 }
 
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("member") // admin | member
+  isBlocked    Boolean  @default(false)
+
+  sessions      Session[]
+  accountAccess AccountAccess[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+}
+
+model AccountAccess {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, accountId])
+}
+
 model Account {
   id         String  @id @default(cuid())
   name       String  // "BCEL Bank", "KBank", "Cash"
@@ -32,8 +67,9 @@ model Account {
   currency   Currency @relation(fields: [currencyId], references: [id])
   note       String?
 
-  transactions Transaction[]
-  imports      StatementImport[]
+  transactions  Transaction[]
+  imports       StatementImport[]
+  accessGrants  AccountAccess[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

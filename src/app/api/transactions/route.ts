@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSession, getVisibleAccountIds } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const visibleIds = await getVisibleAccountIds(session.user.id, session.user.role);
+
   try {
     const { searchParams } = new URL(request.url);
     const accountId = searchParams.get("accountId");
@@ -9,9 +14,16 @@ export async function GET(request: NextRequest) {
     const currencyId = searchParams.get("currencyId");
     const limit = parseInt(searchParams.get("limit") ?? "50", 10);
 
+    const accountIdFilter = accountId
+      ? visibleIds ? (visibleIds.includes(accountId) ? accountId : null) : accountId
+      : undefined;
+
+    if (accountId && accountIdFilter === null) return NextResponse.json([]);
+
     const transactions = await prisma.transaction.findMany({
       where: {
-        ...(accountId && { accountId }),
+        ...(visibleIds && !accountId && { accountId: { in: visibleIds } }),
+        ...(accountIdFilter && { accountId: accountIdFilter }),
         ...(type && { type }),
         ...(currencyId && { currencyId }),
       },
@@ -31,6 +43,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
     const body = await request.json();
     const { type, amount, accountId, categoryId, date, description, attachmentUrl } = body;

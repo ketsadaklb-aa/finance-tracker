@@ -1,36 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSession, getVisibleAccountIds } from "@/lib/auth";
 
 export async function GET() {
-  try {
-    const accounts = await prisma.account.findMany({
-      include: { currency: true },
-      orderBy: { name: "asc" },
-    });
-    return NextResponse.json(accounts);
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch accounts" }, { status: 500 });
-  }
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const visibleIds = await getVisibleAccountIds(session.user.id, session.user.role);
+  const where = visibleIds ? { id: { in: visibleIds } } : {};
+
+  const accounts = await prisma.account.findMany({
+    where,
+    include: { currency: true },
+    orderBy: { name: "asc" },
+  });
+  return NextResponse.json(accounts);
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { name, type, balance, currencyId, note } = body;
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (session.user.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    const account = await prisma.account.create({
-      data: {
-        name,
-        type,
-        balance: balance ?? 0,
-        currencyId,
-        note,
-      },
-      include: { currency: true },
-    });
-
-    return NextResponse.json(account, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to create account" }, { status: 500 });
-  }
+  const { name, type, balance, currencyId, note } = await request.json();
+  const account = await prisma.account.create({
+    data: { name, type, balance: balance ?? 0, currencyId, note },
+    include: { currency: true },
+  });
+  return NextResponse.json(account, { status: 201 });
 }

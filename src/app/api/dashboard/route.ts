@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSession, getVisibleAccountIds } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const visibleIds = await getVisibleAccountIds(session.user.id, session.user.role);
+  const accountFilter = visibleIds ? { id: { in: visibleIds } } : {};
+  const txAccountFilter = visibleIds ? { accountId: { in: visibleIds } } : {};
+
   try {
     const { searchParams } = new URL(request.url);
     const now = new Date();
@@ -15,7 +22,7 @@ export async function GET(request: NextRequest) {
     const currencyMap = new Map(currencies.map((c) => [c.id, c]));
 
     // --- Net Worth ---
-    const accounts = await prisma.account.findMany({ select: { currencyId: true, balance: true } });
+    const accounts = await prisma.account.findMany({ where: accountFilter, select: { currencyId: true, balance: true } });
     const accountBalanceByCurrency: Record<string, number> = {};
     for (const a of accounts) {
       accountBalanceByCurrency[a.currencyId] = (accountBalanceByCurrency[a.currencyId] ?? 0) + a.balance;
@@ -56,6 +63,7 @@ export async function GET(request: NextRequest) {
 
     // --- Recent Transactions ---
     const recentTransactions = await prisma.transaction.findMany({
+      where: txAccountFilter,
       include: { account: true, currency: true, category: true },
       orderBy: { date: "desc" },
       take: 10,
@@ -109,7 +117,7 @@ export async function GET(request: NextRequest) {
 
     // --- Monthly Totals ---
     const monthlyTransactions = await prisma.transaction.findMany({
-      where: { date: { gte: startOfMonth, lte: endOfMonth }, type: { in: ["income", "expense"] } },
+      where: { ...txAccountFilter, date: { gte: startOfMonth, lte: endOfMonth }, type: { in: ["income", "expense"] } },
       select: { type: true, amount: true, currencyId: true },
     });
     const monthlyTotals: {
