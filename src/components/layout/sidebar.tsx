@@ -24,8 +24,8 @@ function Logo() {
         <DollarSign className="h-4 w-4 text-white" />
       </div>
       <div>
-        <h1 className="text-white font-bold text-sm leading-none">Finance</h1>
-        <p className="text-blue-300 text-xs mt-0.5">Tracker</p>
+        <h1 className="text-white font-bold text-sm leading-none">Catdy's</h1>
+        <p className="text-blue-300 text-xs mt-0.5">AR AP Tracker</p>
       </div>
     </div>
   );

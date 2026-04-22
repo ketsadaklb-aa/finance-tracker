@@ -37,28 +37,20 @@ export default function LoginPage() {
             <span className="text-white text-lg font-bold">₭</span>
           </div>
           <div>
-            <p className="font-bold text-white leading-none">Finance Tracker</p>
-            <p className="text-blue-300 text-xs mt-0.5">Business Edition</p>
+            <p className="font-bold text-white leading-none">Catdy's</p>
+            <p className="text-blue-300 text-xs mt-0.5">AR AP Tracker</p>
           </div>
         </div>
 
-        <div className="space-y-6">
-          <h2 className="text-3xl font-bold leading-snug">
-            Track every kip,<br />baht, and dollar.
-          </h2>
-          <p className="text-blue-200 text-sm leading-relaxed">
-            Multi-currency accounts, AR/AP ledger, team visibility controls — all in one place.
-          </p>
-          <div className="flex gap-3">
-            {["LAK ₭", "THB ฿", "USD $"].map(c => (
-              <span key={c} className="text-xs font-mono bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-blue-100">
-                {c}
-              </span>
-            ))}
-          </div>
+        <div className="flex gap-3">
+          {["LAK ₭", "THB ฿", "USD $"].map(c => (
+            <span key={c} className="text-xs font-mono bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-blue-100">
+              {c}
+            </span>
+          ))}
         </div>
 
-        <p className="text-blue-400 text-xs">© {new Date().getFullYear()} Finance Tracker</p>
+        <p className="text-blue-400 text-xs">© {new Date().getFullYear()} Catdy&apos;s AR AP Tracker</p>
       </div>
 
       {/* Right — form panel */}
@@ -69,7 +61,7 @@ export default function LoginPage() {
             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
               <span className="text-white text-lg font-bold">₭</span>
             </div>
-            <p className="font-bold text-slate-800 text-lg">Finance Tracker</p>
+            <p className="font-bold text-slate-800 text-lg">Catdy&apos;s AR AP Tracker</p>
           </div>
 
           <div className="mb-8">

@@ -10,8 +10,8 @@ import { seedCurrenciesAndCategories } from "@/lib/seed";
 const geist = Geist({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Finance Tracker",
-  description: "Personal finance tracking",
+  title: "Catdy's AR AP Tracker",
+  description: "AR AP Tracker",
 };
 
 export const viewport = {
