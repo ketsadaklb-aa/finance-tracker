@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Currency {
+  id     String @id @default(cuid())
+  code   String @unique // LAK, THB, USD
+  symbol String // ₭, ฿, $
+  name   String // Lao Kip, Thai Baht, US Dollar
+
+  accounts     Account[]
+  transactions Transaction[]
+  receivables  Receivable[]
+  payables     Payable[]
+  receivedPayments ReceivedPayment[]
+  madePayments     MadePayment[]
+
+  createdAt DateTime @default(now())
+}
+
+model Account {
+  id         String  @id @default(cuid())
+  name       String  // "BCEL Bank", "KBank", "Cash"
+  type       String  // bank | cash | credit_card | wallet
+  balance    Float   @default(0)
+  currencyId String
+  currency   Currency @relation(fields: [currencyId], references: [id])
+  note       String?
+
+  transactions Transaction[]
+  imports      StatementImport[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Contact {
+  id    String  @id @default(cuid())
+  name  String
+  phone String?
+  note  String?
+
+  receivables Receivable[]
+  payables    Payable[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id   String @id @default(cuid())
+  name String @unique
+  type String // income | expense | both
+
+  transactions Transaction[]
+}
+
+model Transaction {
+  id         String   @id @default(cuid())
+  type       String   // income | expense | transfer
+  amount     Float
+  currencyId String
+  currency   Currency @relation(fields: [currencyId], references: [id])
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+  date       DateTime
+  description String?
+  source     String   @default("manual") // manual | import
+  importId   String?
+  import     StatementImport? @relation(fields: [importId], references: [id])
+  attachmentUrl String?
+
+  // Link to AR/AP when payment is logged
+  receivablePaymentId String?
+  payablePaymentId    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Receivable {
+  id              String  @id @default(cuid())
+  contactId       String
+  contact         Contact @relation(fields: [contactId], references: [id])
+  currencyId      String
+  currency        Currency @relation(fields: [currencyId], references: [id])
+  originalAmount  Float
+  paidAmount      Float   @default(0)
+  remainingAmount Float
+  status          String  @default("open") // open | partial | settled
+  description     String?
+  agreementDate   DateTime
+  dueDate         DateTime?
+  note            String?
+  attachmentUrl   String?
+
+  payments ReceivedPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ReceivedPayment {
+  id           String     @id @default(cuid())
+  receivableId String
+  receivable   Receivable @relation(fields: [receivableId], references: [id])
+  currencyId   String
+  currency     Currency   @relation(fields: [currencyId], references: [id])
+  amount       Float
+  date         DateTime
+  note         String?
+  attachmentUrl String?
+
+  createdAt DateTime @default(now())
+}
+
+model Payable {
+  id              String  @id @default(cuid())
+  contactId       String
+  contact         Contact @relation(fields: [contactId], references: [id])
+  currencyId      String
+  currency        Currency @relation(fields: [currencyId], references: [id])
+  originalAmount  Float
+  paidAmount      Float   @default(0)
+  remainingAmount Float
+  status          String  @default("open") // open | partial | settled
+  description     String?
+  agreementDate   DateTime
+  dueDate         DateTime?
+  note            String?
+  attachmentUrl   String?
+
+  payments MadePayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MadePayment {
+  id        String  @id @default(cuid())
+  payableId String
+  payable   Payable @relation(fields: [payableId], references: [id])
+  currencyId String
+  currency   Currency @relation(fields: [currencyId], references: [id])
+  amount    Float
+  date      DateTime
+  note      String?
+  attachmentUrl String?
+
+  createdAt DateTime @default(now())
+}
+
+model StatementImport {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id])
+  fileName  String
+  fileType  String  // csv | pdf
+  uploadedAt DateTime @default(now())
+
+  transactions Transaction[]
+}
