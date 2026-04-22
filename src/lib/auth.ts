@@ -27,13 +27,23 @@ export async function requireSession() {
 }
 
 // Returns account IDs visible to this user.
-// Admins see all accounts; members only see granted ones.
+// Admins see all; members only see granted ones.
 export async function getVisibleAccountIds(userId: string, role: string): Promise<string[] | null> {
-  if (role === "admin") return null; // null = no filter, see all
-
+  if (role === "admin") return null;
   const access = await prisma.accountAccess.findMany({
     where: { userId },
     select: { accountId: true },
   });
   return access.map((a) => a.accountId);
+}
+
+// Returns contact IDs visible to this user.
+// Admins see all; members only see explicitly granted contacts (Option B: deny by default).
+export async function getVisibleContactIds(userId: string, role: string): Promise<string[] | null> {
+  if (role === "admin") return null;
+  const access = await prisma.contactAccess.findMany({
+    where: { userId },
+    select: { contactId: true },
+  });
+  return access.map((a) => a.contactId);
 }

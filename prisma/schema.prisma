@@ -33,6 +33,7 @@ model User {
 
   sessions      Session[]
   accountAccess AccountAccess[]
+  contactAccess ContactAccess[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -58,6 +59,16 @@ model AccountAccess {
   @@unique([userId, accountId])
 }
 
+model ContactAccess {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contactId])
+}
+
 model Account {
   id         String  @id @default(cuid())
   name       String  // "BCEL Bank", "KBank", "Cash"
@@ -81,8 +92,9 @@ model Contact {
   phone String?
   note  String?
 
-  receivables Receivable[]
-  payables    Payable[]
+  receivables   Receivable[]
+  payables      Payable[]
+  accessGrants  ContactAccess[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

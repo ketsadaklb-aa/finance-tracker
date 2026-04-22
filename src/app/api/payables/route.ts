@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSession, getVisibleContactIds } from "@/lib/auth";
 
 const paymentInclude = { include: { currency: true }, orderBy: { date: "desc" as const } };
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const { searchParams } = new URL(request.url);
     const contactId = searchParams.get("contactId");
+
+    const visibleIds = await getVisibleContactIds(session.user.id, session.user.role);
 
     const payables = await prisma.payable.findMany({
       where: {
         ...(contactId && { contactId }),
+        ...(visibleIds !== null && { contactId: { in: visibleIds } }),
       },
       include: {
         contact: true,
@@ -21,7 +28,7 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json(payables);
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to fetch payables" }, { status: 500 });
   }
 }

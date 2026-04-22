@@ -1,35 +1,49 @@
 "use client";
 import { useEffect, useState } from "react";
-import { UserPlus, Trash2, Ban, CheckCircle, KeyRound, Shield } from "lucide-react";
+import { UserPlus, Trash2, Ban, CheckCircle, KeyRound, Shield, Users } from "lucide-react";
 
 type User = { id: string; username: string; name: string; role: string; isBlocked: boolean };
 type Account = { id: string; name: string; type: string };
+type Contact = { id: string; name: string };
 
 export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [accessMap, setAccessMap] = useState<Record<string, string[]>>({}); // accountId -> userIds[]
+  const [contactAccessMap, setContactAccessMap] = useState<Record<string, string[]>>({}); // contactId -> userIds[]
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ username: "", name: "", password: "" });
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<"users" | "access">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "access" | "contacts">("users");
 
   async function load() {
-    const [u, a] = await Promise.all([
+    const [u, a, c] = await Promise.all([
       fetch("/api/admin/users").then((r) => r.json()),
       fetch("/api/accounts").then((r) => r.json()),
+      fetch("/api/contacts").then((r) => r.json()),
     ]);
-    setUsers(u);
-    setAccounts(a);
+    setUsers(Array.isArray(u) ? u : []);
+    setAccounts(Array.isArray(a) ? a : []);
+    setContacts(Array.isArray(c) ? c : []);
 
-    const map: Record<string, string[]> = {};
+    const aMap: Record<string, string[]> = {};
     await Promise.all(
-      a.map(async (acc: Account) => {
+      (Array.isArray(a) ? a : []).map(async (acc: Account) => {
         const ids = await fetch(`/api/admin/accounts/${acc.id}/access`).then((r) => r.json());
-        map[acc.id] = ids;
+        aMap[acc.id] = Array.isArray(ids) ? ids : [];
       })
     );
-    setAccessMap(map);
+    setAccessMap(aMap);
+
+    const cMap: Record<string, string[]> = {};
+    await Promise.all(
+      (Array.isArray(c) ? c : []).map(async (contact: Contact) => {
+        const ids = await fetch(`/api/admin/contacts/${contact.id}/access`).then((r) => r.json());
+        cMap[contact.id] = Array.isArray(ids) ? ids : [];
+      })
+    );
+    setContactAccessMap(cMap);
   }
 
   useEffect(() => { load(); }, []);
@@ -76,6 +90,53 @@ export default function AdminPage() {
     setAccessMap((prev) => ({ ...prev, [accountId]: updated }));
   }
 
+  async function toggleContactAccess(contactId: string, userId: string) {
+    const current = contactAccessMap[contactId] ?? [];
+    const updated = current.includes(userId)
+      ? current.filter((id) => id !== userId)
+      : [...current, userId];
+    await fetch(`/api/admin/contacts/${contactId}/access`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userIds: updated }),
+    });
+    setContactAccessMap((prev) => ({ ...prev, [contactId]: updated }));
+  }
+
+  async function grantAllContacts(userId: string) {
+    await Promise.all(
+      contacts.map((c) => {
+        const current = contactAccessMap[c.id] ?? [];
+        if (current.includes(userId)) return Promise.resolve();
+        const updated = [...current, userId];
+        return fetch(`/api/admin/contacts/${c.id}/access`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userIds: updated }),
+        }).then(() => {
+          setContactAccessMap((prev) => ({ ...prev, [c.id]: updated }));
+        });
+      })
+    );
+  }
+
+  async function revokeAllContacts(userId: string) {
+    await Promise.all(
+      contacts.map((c) => {
+        const current = contactAccessMap[c.id] ?? [];
+        if (!current.includes(userId)) return Promise.resolve();
+        const updated = current.filter((id) => id !== userId);
+        return fetch(`/api/admin/contacts/${c.id}/access`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userIds: updated }),
+        }).then(() => {
+          setContactAccessMap((prev) => ({ ...prev, [c.id]: updated }));
+        });
+      })
+    );
+  }
+
   const members = users.filter((u) => u.role === "member");
 
   return (
@@ -86,21 +147,21 @@ export default function AdminPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Admin Panel</h1>
-          <p className="text-slate-500 text-sm">Manage team members and account visibility</p>
+          <p className="text-slate-500 text-sm">Manage team members and visibility settings</p>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-slate-200">
-        {(["users", "access"] as const).map((tab) => (
+        {(["users", "access", "contacts"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
-            {tab === "users" ? "Team Members" : "Account Access"}
+            {tab === "users" ? "Team Members" : tab === "access" ? "Account Access" : "Contact Access"}
           </button>
         ))}
       </div>
@@ -123,25 +184,15 @@ export default function AdminPage() {
               <h3 className="font-medium text-slate-700">New Team Member</h3>
               {error && <p className="text-red-600 text-sm">{error}</p>}
               <div className="grid grid-cols-3 gap-3">
-                <input
-                  placeholder="Username"
-                  value={form.username}
+                <input placeholder="Username" value={form.username}
                   onChange={(e) => setForm({ ...form, username: e.target.value })}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                />
-                <input
-                  placeholder="Display name"
-                  value={form.name}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                <input placeholder="Display name" value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                />
-                <input
-                  type="password"
-                  placeholder="Password"
-                  value={form.password}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                <input type="password" placeholder="Password" value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                />
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
               </div>
               <div className="flex gap-2">
                 <button onClick={createUser} className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">Create</button>
@@ -161,17 +212,12 @@ export default function AdminPage() {
                   {user.isBlocked && (
                     <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full">Blocked</span>
                   )}
-                  <button
-                    onClick={() => toggleBlock(user)}
-                    title={user.isBlocked ? "Unblock" : "Block"}
-                    className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-amber-600 transition-colors"
-                  >
+                  <button onClick={() => toggleBlock(user)} title={user.isBlocked ? "Unblock" : "Block"}
+                    className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-amber-600 transition-colors">
                     {user.isBlocked ? <CheckCircle className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
                   </button>
-                  <button
-                    onClick={() => deleteUser(user.id)}
-                    className="p-2 rounded-lg hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors"
-                  >
+                  <button onClick={() => deleteUser(user.id)}
+                    className="p-2 rounded-lg hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -206,12 +252,9 @@ export default function AdminPage() {
                     const hasAccess = (accessMap[account.id] ?? []).includes(user.id);
                     return (
                       <label key={user.id} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={hasAccess}
+                        <input type="checkbox" checked={hasAccess}
                           onChange={() => toggleAccess(account.id, user.id)}
-                          className="w-4 h-4 accent-blue-600"
-                        />
+                          className="w-4 h-4 accent-blue-600" />
                         <span className="text-sm text-slate-700">{user.name}</span>
                       </label>
                     );
@@ -220,6 +263,101 @@ export default function AdminPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Contact Access Tab */}
+      {activeTab === "contacts" && (
+        <div className="space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+            <strong>Option B — deny by default.</strong> Members see only contacts you explicitly check. Admin always sees all.
+          </div>
+
+          {members.length === 0 && (
+            <p className="text-center text-slate-400 py-8">No members yet. Add team members first.</p>
+          )}
+          {contacts.length === 0 && (
+            <p className="text-center text-slate-400 py-8">No contacts yet. Create contacts first.</p>
+          )}
+
+          {contacts.length > 0 && members.length > 0 && contacts.map((contact) => {
+            const grantedIds = contactAccessMap[contact.id] ?? [];
+            const grantedCount = grantedIds.length;
+            return (
+              <div key={contact.id} className="bg-white border border-slate-200 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shrink-0">
+                      <span className="text-white text-xs font-bold">{contact.name.charAt(0).toUpperCase()}</span>
+                    </div>
+                    <span className="font-medium text-slate-800">{contact.name}</span>
+                    <span className="text-xs text-slate-400">
+                      {grantedCount === 0
+                        ? "hidden from all members"
+                        : grantedCount === members.length
+                        ? "visible to all members"
+                        : `visible to ${grantedCount} member${grantedCount !== 1 ? "s" : ""}`}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => {
+                      members.forEach(u => {
+                        if (!(contactAccessMap[contact.id] ?? []).includes(u.id))
+                          toggleContactAccess(contact.id, u.id);
+                      });
+                    }} className="text-xs text-blue-600 hover:underline">Grant all</button>
+                    <span className="text-slate-300">·</span>
+                    <button onClick={() => {
+                      members.forEach(u => {
+                        if ((contactAccessMap[contact.id] ?? []).includes(u.id))
+                          toggleContactAccess(contact.id, u.id);
+                      });
+                    }} className="text-xs text-red-500 hover:underline">Revoke all</button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {members.map((user) => {
+                    const hasAccess = grantedIds.includes(user.id);
+                    return (
+                      <label key={user.id} className={`flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-lg border transition-colors ${
+                        hasAccess ? "bg-green-50 border-green-200" : "bg-slate-50 border-slate-200"
+                      }`}>
+                        <input type="checkbox" checked={hasAccess}
+                          onChange={() => toggleContactAccess(contact.id, user.id)}
+                          className="w-4 h-4 accent-green-600" />
+                        <span className={`text-sm font-medium ${hasAccess ? "text-green-700" : "text-slate-500"}`}>
+                          {user.name}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Quick actions per member */}
+          {members.length > 0 && contacts.length > 0 && (
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-xs text-slate-400 mb-3 font-medium uppercase tracking-wide">Quick Grant / Revoke by Member</p>
+              <div className="flex flex-wrap gap-2">
+                {members.map((user) => {
+                  const granted = contacts.filter(c => (contactAccessMap[c.id] ?? []).includes(user.id)).length;
+                  return (
+                    <div key={user.id} className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2">
+                      <Users className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-sm font-medium text-slate-700">{user.name}</span>
+                      <span className="text-xs text-slate-400">{granted}/{contacts.length}</span>
+                      <button onClick={() => grantAllContacts(user.id)}
+                        className="text-xs text-green-600 hover:underline ml-1">All</button>
+                      <button onClick={() => revokeAllContacts(user.id)}
+                        className="text-xs text-red-500 hover:underline">None</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
