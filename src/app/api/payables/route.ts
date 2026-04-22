@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
         currency: true,
         payments: paymentInclude,
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { agreementDate: "desc" },
     });
 
     return NextResponse.json(payables);
