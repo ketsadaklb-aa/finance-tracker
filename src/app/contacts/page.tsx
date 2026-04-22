@@ -30,8 +30,9 @@ export default function ContactsPage() {
   useEffect(() => { fetchAll(); }, []);
 
   function fetchAll() {
-    fetch("/api/contacts").then(r => r.json()).then(setContacts);
-    fetch("/api/receivables").then(r => r.json()).then((data: { contactId: string; status: string; remainingAmount: number; currency: { code: string; symbol: string } }[]) => {
+    fetch("/api/contacts").then(r => r.json()).then(d => { if (Array.isArray(d)) setContacts(d); });
+    fetch("/api/receivables").then(r => r.json()).then((data) => {
+      if (!Array.isArray(data)) return;
       const items: ARAPItem[] = [];
       for (const r of data) {
         if (r.status === "settled") continue;
@@ -39,7 +40,8 @@ export default function ContactsPage() {
       }
       setArItems(items);
     });
-    fetch("/api/payables").then(r => r.json()).then((data: { contactId: string; status: string; remainingAmount: number; currency: { code: string; symbol: string } }[]) => {
+    fetch("/api/payables").then(r => r.json()).then((data) => {
+      if (!Array.isArray(data)) return;
       const items: ARAPItem[] = [];
       for (const p of data) {
         if (p.status === "settled") continue;
