@@ -50,6 +50,18 @@ function totalsFor(items: ARItem[]) {
   }, {} as Record<string, { symbol: string; remaining: number }>);
 }
 
+// ─── Table totals helper ─────────────────────────────────────────────────────
+function tableTotals(items: ARItem[]) {
+  return items.reduce((acc, r) => {
+    const code = r.currency.code;
+    if (!acc[code]) acc[code] = { symbol: r.currency.symbol, original: 0, paid: 0, remaining: 0 };
+    acc[code].original += r.originalAmount;
+    acc[code].paid += r.paidAmount;
+    acc[code].remaining += r.remainingAmount;
+    return acc;
+  }, {} as Record<string, { symbol: string; original: number; paid: number; remaining: number }>);
+}
+
 // ─── Reusable items table ────────────────────────────────────────────────────
 function ItemsTable({
   items, type, expanded, onToggle, onEdit, onDelete, onPayOpen, onMarkSettled,
@@ -72,88 +84,92 @@ function ItemsTable({
   const accentPaid = type === "ar" ? "text-green-600" : "text-blue-600";
   const accentRemaining = type === "ar" ? "text-slate-800" : "text-red-600";
   const progressColor = type === "ar" ? "bg-green-500" : "bg-blue-500";
+  const totals = tableTotals(items);
 
   if (items.length === 0) {
     return <p className="text-center text-slate-400 text-sm py-6">No {type === "ar" ? "receivables" : "payables"} yet.</p>;
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-100">
-            <th className="text-left py-2 pr-3 font-medium text-slate-500">Description</th>
-            <th className="text-left py-2 pr-3 font-medium text-slate-500">CCY</th>
-            <th className="text-right py-2 pr-3 font-medium text-slate-500">Original</th>
-            <th className="text-right py-2 pr-3 font-medium text-slate-500">{type === "ar" ? "Received" : "Paid"}</th>
-            <th className="text-right py-2 pr-3 font-medium text-slate-500">Remaining</th>
-            <th className="text-left py-2 pr-3 font-medium text-slate-500">Progress</th>
-            <th className="text-left py-2 pr-3 font-medium text-slate-500">Status</th>
-            <th className="text-left py-2 pr-3 font-medium text-slate-500">Due</th>
-            <th className="py-2" />
-          </tr>
-        </thead>
-        <tbody>
-          {items.map(r => {
-            const pct = Math.min(100, r.originalAmount > 0 ? (r.paidAmount / r.originalAmount) * 100 : 0);
-            const overdue = isOverdue(r);
-            const isExp = expanded.has(r.id);
-            return (
-              <React.Fragment key={r.id}>
-                <tr className="border-b border-slate-50 hover:bg-slate-50 group">
-                  <td className="py-2 pr-3 text-slate-600 max-w-[130px]">
-                    <span className="flex items-center gap-1 truncate">
-                      <span className="truncate">{r.description || <span className="text-slate-300">—</span>}</span>
-                      {r.attachmentUrl && (
-                        <a href={r.attachmentUrl} target="_blank" rel="noopener noreferrer"
-                          className="shrink-0 text-blue-400 hover:text-blue-600">
-                          <Paperclip className="h-3 w-3" />
-                        </a>
-                      )}
-                    </span>
-                  </td>
-                  <td className="py-2 pr-3 font-medium">{r.currency.code}</td>
-                  <td className="py-2 pr-3 text-right text-slate-600">{formatAmount(r.originalAmount, r.currency.symbol)}</td>
-                  <td className={`py-2 pr-3 text-right ${accentPaid}`}>{formatAmount(r.paidAmount, r.currency.symbol)}</td>
-                  <td className={`py-2 pr-3 text-right font-semibold ${accentRemaining}`}>{formatAmount(r.remainingAmount, r.currency.symbol)}</td>
-                  <td className="py-2 pr-3 min-w-[80px]">
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden w-16">
-                      <div className={`h-full ${progressColor} rounded-full`} style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="text-xs text-slate-400">{Math.round(pct)}%</span>
-                  </td>
-                  <td className="py-2 pr-3"><Badge variant={statusVariant[r.status]}>{r.status}</Badge></td>
-                  <td className={`py-2 pr-3 text-xs ${overdue ? "text-red-500 font-medium" : "text-slate-400"}`}>
-                    {overdue && <AlertCircle className="h-3 w-3 inline mr-1" />}
-                    {r.dueDate ? getAgingLabel(r.dueDate) : formatDate(r.agreementDate)}
-                  </td>
-                  <td className="py-2">
-                    <div className="flex items-center gap-1">
-                      {r.status !== "settled" && (<>
-                        <Button size="sm" variant={type === "ar" ? "success" : "default"}
-                          onClick={() => onPayOpen(r)}>+ Pay</Button>
-                        <button title="Mark settled" onClick={() => onMarkSettled(r)}
-                          className="p-1 rounded hover:bg-green-50 text-slate-300 hover:text-green-600 transition-colors">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
+    <div className="space-y-3">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100">
+              <th className="text-left py-2 pr-3 font-medium text-slate-500 whitespace-nowrap">Agreed</th>
+              <th className="text-left py-2 pr-3 font-medium text-slate-500">Description</th>
+              <th className="text-left py-2 pr-3 font-medium text-slate-500">CCY</th>
+              <th className="text-right py-2 pr-3 font-medium text-slate-500">Original</th>
+              <th className="text-right py-2 pr-3 font-medium text-slate-500">{type === "ar" ? "Received" : "Paid"}</th>
+              <th className="text-right py-2 pr-3 font-medium text-slate-500">Remaining</th>
+              <th className="text-left py-2 pr-3 font-medium text-slate-500">Progress</th>
+              <th className="text-left py-2 pr-3 font-medium text-slate-500">Status</th>
+              <th className="text-left py-2 pr-3 font-medium text-slate-500">Due</th>
+              <th className="py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(r => {
+              const pct = Math.min(100, r.originalAmount > 0 ? (r.paidAmount / r.originalAmount) * 100 : 0);
+              const overdue = isOverdue(r);
+              const isExp = expanded.has(r.id);
+              return (
+                <React.Fragment key={r.id}>
+                  <tr className="border-b border-slate-50 hover:bg-slate-50 group">
+                    <td className="py-2 pr-3 text-xs text-slate-600 font-medium whitespace-nowrap">{formatDate(r.agreementDate)}</td>
+                    <td className="py-2 pr-3 text-slate-600 max-w-[130px]">
+                      <span className="flex items-center gap-1 truncate">
+                        <span className="truncate">{r.description || <span className="text-slate-300">—</span>}</span>
+                        {r.attachmentUrl && (
+                          <a href={r.attachmentUrl} target="_blank" rel="noopener noreferrer"
+                            className="shrink-0 text-blue-400 hover:text-blue-600">
+                            <Paperclip className="h-3 w-3" />
+                          </a>
+                        )}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 font-medium">{r.currency.code}</td>
+                    <td className="py-2 pr-3 text-right text-slate-600">{formatAmount(r.originalAmount, r.currency.symbol)}</td>
+                    <td className={`py-2 pr-3 text-right ${accentPaid}`}>{formatAmount(r.paidAmount, r.currency.symbol)}</td>
+                    <td className={`py-2 pr-3 text-right font-semibold ${accentRemaining}`}>{formatAmount(r.remainingAmount, r.currency.symbol)}</td>
+                    <td className="py-2 pr-3 min-w-[80px]">
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden w-16">
+                        <div className={`h-full ${progressColor} rounded-full`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs text-slate-400">{Math.round(pct)}%</span>
+                    </td>
+                    <td className="py-2 pr-3"><Badge variant={statusVariant[r.status]}>{r.status}</Badge></td>
+                    <td className={`py-2 pr-3 text-xs ${overdue ? "text-red-500 font-medium" : "text-slate-400"}`}>
+                      {overdue && <AlertCircle className="h-3 w-3 inline mr-1" />}
+                      {r.dueDate ? getAgingLabel(r.dueDate) : "—"}
+                    </td>
+                    <td className="py-2">
+                      <div className="flex items-center gap-1">
+                        {r.status !== "settled" && (<>
+                          <Button size="sm" variant={type === "ar" ? "success" : "default"}
+                            onClick={() => onPayOpen(r)}>+ Pay</Button>
+                          <button title="Mark settled" onClick={() => onMarkSettled(r)}
+                            className="p-1 rounded hover:bg-green-50 text-slate-300 hover:text-green-600 transition-colors">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>)}
+                        {r.payments.length > 0 && (
+                          <button onClick={() => onToggle(r.id)} className="p-1 rounded hover:bg-slate-100 text-slate-400">
+                            {isExp ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          </button>
+                        )}
+                        <button onClick={() => onEdit(r)} className="p-1 rounded hover:bg-slate-100 text-slate-300 hover:text-slate-600">
+                          <Pencil className="h-3.5 w-3.5" />
                         </button>
-                      </>)}
-                      {r.payments.length > 0 && (
-                        <button onClick={() => onToggle(r.id)} className="p-1 rounded hover:bg-slate-100 text-slate-400">
-                          {isExp ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                        </button>
-                      )}
-                      <button onClick={() => onEdit(r)} className="p-1 rounded hover:bg-slate-100 text-slate-300 hover:text-slate-600">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => onDelete(r.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-500">
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <button onClick={() => onDelete(r.id)} className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-500">
+                          <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </td>
                 </tr>
                 {isExp && r.payments.length > 0 && (
                   <tr>
-                    <td colSpan={9} className="pb-3 pt-1 pl-4">
+                    <td colSpan={10} className="pb-3 pt-1 pl-4">
                       <div className="bg-slate-50 rounded-lg p-3 space-y-1.5">
                         <p className="text-xs font-medium text-slate-400 mb-2">Payment History — {r.currency.code}</p>
                         {r.payments.map(p => (
@@ -189,6 +205,25 @@ function ItemsTable({
         </tbody>
       </table>
     </div>
+
+    {/* Totals summary per currency */}
+    <div className="space-y-1.5">
+      {Object.entries(totals).map(([code, t]) => (
+        <div key={code} className="flex items-center gap-4 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm">
+          <span className="font-bold text-slate-700 w-10 shrink-0">{code}</span>
+          <div className="flex gap-6 flex-wrap">
+            <span className="text-slate-400">Original <span className="font-medium text-slate-700">{formatAmount(t.original, t.symbol)}</span></span>
+            <span className={type === "ar" ? "text-green-600" : "text-blue-600"}>
+              {type === "ar" ? "Received" : "Paid"} <span className="font-semibold">{formatAmount(t.paid, t.symbol)}</span>
+            </span>
+            <span className={type === "ar" ? "text-slate-800 font-bold" : "text-red-600 font-bold"}>
+              Remaining {formatAmount(t.remaining, t.symbol)}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
   );
 }
 
@@ -218,6 +253,10 @@ export default function LedgerPage() {
   const [uploading, setUploading] = useState(false);
   const [attachingPayment, setAttachingPayment] = useState<{ itemId: string; paymentId: string; type: "ar" | "ap" } | null>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
+  const [settleDialog, setSettleDialog] = useState<{ item: ARItem; type: "ar" | "ap" } | null>(null);
+  const [settleFile, setSettleFile] = useState<File | null>(null);
+  const [settleNote, setSettleNote] = useState("Settlement");
+  const [settleDate, setSettleDate] = useState(new Date().toISOString().slice(0, 10));
 
   function fetchAll() {
     fetch("/api/receivables").then(r => r.json()).then(d => { if (Array.isArray(d)) setReceivables(d); });
@@ -332,19 +371,32 @@ export default function LedgerPage() {
     else { const d = await res.json(); toast(d.error ?? "Failed to delete", "error"); }
   }
 
-  async function handleMarkSettled(item: ARItem, type: "ar" | "ap") {
-    if (item.remainingAmount <= 0) return;
+  async function handleConfirmSettle() {
+    if (!settleDialog) return;
+    const { item, type } = settleDialog;
+    setLoading(true);
+    let attachmentUrl: string | null = null;
+    if (settleFile) {
+      setUploading(true);
+      attachmentUrl = await uploadFile(settleFile);
+      setUploading(false);
+      if (!attachmentUrl) { toast("File upload failed", "error"); setLoading(false); return; }
+    }
     const base = type === "ar" ? "/api/receivables" : "/api/payables";
     const res = await fetch(`${base}/${item.id}/payments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: item.remainingAmount, date: new Date().toISOString().slice(0, 10), note: "Marked as settled" }),
+      body: JSON.stringify({ amount: item.remainingAmount, date: settleDate, note: settleNote || "Settlement", attachmentUrl }),
     });
+    setLoading(false);
     if (res.ok) {
       const updated = await res.json();
       if (type === "ar") setReceivables(prev => prev.map(x => x.id === item.id ? updated : x));
       else setPayables(prev => prev.map(x => x.id === item.id ? updated : x));
-      toast("Marked as settled");
+      toast("Settled");
+      setSettleDialog(null); setSettleFile(null);
+    } else {
+      const d = await res.json(); toast(d.error ?? "Failed", "error");
     }
   }
 
@@ -535,7 +587,12 @@ export default function LedgerPage() {
                           setPayForm({ amount: String(item.remainingAmount), date: new Date().toISOString().slice(0, 10), note: "" });
                           setPayFile(null);
                         }}
-                        onMarkSettled={(item) => handleMarkSettled(item, tab)}
+                        onMarkSettled={(item) => {
+                          setSettleDialog({ item, type: tab });
+                          setSettleNote("Settlement");
+                          setSettleDate(new Date().toISOString().slice(0, 10));
+                          setSettleFile(null);
+                        }}
                         onDeletePayment={(itemId, paymentId) => handleDeletePayment(itemId, paymentId, tab)}
                         onTriggerAttach={(itemId, paymentId) => triggerAttach(itemId, paymentId, tab)}
                         uploading={uploading}
@@ -671,6 +728,65 @@ export default function LedgerPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Settle confirmation dialog */}
+      <Dialog open={!!settleDialog} onOpenChange={v => { if (!v) { setSettleDialog(null); setSettleFile(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Settlement</DialogTitle>
+          </DialogHeader>
+          {settleDialog && (
+            <div className="space-y-4">
+              <div className="bg-green-50 border border-green-100 rounded-lg p-3 text-sm space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Contact</span>
+                  <span className="font-medium">{settleDialog.item.contact.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Type</span>
+                  <span className="font-medium">{settleDialog.type === "ar" ? "Receivable (AR)" : "Payable (AP)"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Amount to settle</span>
+                  <span className="font-bold text-green-700 text-base">
+                    {formatAmount(settleDialog.item.remainingAmount, settleDialog.item.currency.symbol)} {settleDialog.item.currency.code}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Settlement Date</Label>
+                <Input type="date" value={settleDate} onChange={e => setSettleDate(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Note (optional)</Label>
+                <Input placeholder="e.g. Final payment, cash" value={settleNote} onChange={e => setSettleNote(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Attach Receipt / Slip (optional)</Label>
+                <label className="flex items-center gap-3 cursor-pointer border border-dashed border-slate-200 rounded-lg px-3 py-2.5 hover:bg-slate-50">
+                  <Paperclip className="h-4 w-4 text-slate-400 shrink-0" />
+                  <span className="text-sm text-slate-500 truncate">
+                    {settleFile ? settleFile.name : "Attach payment slip or receipt"}
+                  </span>
+                  <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
+                    onChange={e => setSettleFile(e.target.files?.[0] ?? null)} />
+                </label>
+                {settleFile && (
+                  <button type="button" onClick={() => setSettleFile(null)} className="text-xs text-red-400 flex items-center gap-1">
+                    <X className="h-3 w-3" /> Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setSettleDialog(null); setSettleFile(null); }}>Cancel</Button>
+            <Button variant="success" disabled={loading || uploading} onClick={handleConfirmSettle}>
+              {uploading ? "Uploading..." : loading ? "Settling..." : "Confirm Settlement"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
