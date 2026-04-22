@@ -273,6 +273,14 @@ export default function LedgerPage() {
     setDialogOpen(true);
   }
 
+  function openAddTop() {
+    setDialogType("ar");
+    setEditRecord(null);
+    setForm(emptyForm());
+    setRecordFile(null);
+    setDialogOpen(true);
+  }
+
   function openEdit(item: ARItem, type: "ar" | "ap") {
     setDialogType(type);
     setEditRecord(item);
@@ -420,6 +428,9 @@ export default function LedgerPage() {
           <h1 className="text-2xl font-bold text-slate-900">AR / AP Ledger</h1>
           <p className="text-slate-500 text-sm mt-1">Click a contact to view and manage their receivables and payables</p>
         </div>
+        <Button onClick={openAddTop}>
+          <Plus className="h-4 w-4 mr-1.5" />Add Entry
+        </Button>
       </div>
 
       {grouped.length === 0 ? (
@@ -547,6 +558,28 @@ export default function LedgerPage() {
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {!editRecord && (
+              <div className="flex gap-2">
+                <button type="button"
+                  onClick={() => setDialogType("ar")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    dialogType === "ar"
+                      ? "bg-green-50 border-green-400 text-green-700"
+                      : "border-slate-200 text-slate-400 hover:border-slate-300"
+                  }`}>
+                  <TrendingUp className="h-4 w-4" /> Receivable (AR)
+                </button>
+                <button type="button"
+                  onClick={() => setDialogType("ap")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    dialogType === "ap"
+                      ? "bg-red-50 border-red-400 text-red-700"
+                      : "border-slate-200 text-slate-400 hover:border-slate-300"
+                  }`}>
+                  <TrendingDown className="h-4 w-4" /> Payable (AP)
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Contact</Label>
