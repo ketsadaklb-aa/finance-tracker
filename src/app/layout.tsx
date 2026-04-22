@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/sidebar";
+import { Shell } from "@/components/layout/shell";
 import { ToastProvider } from "@/components/ui/toast";
 import { seedCurrenciesAndCategories } from "@/lib/seed";
 
@@ -42,8 +42,7 @@ export default async function RootLayout({
     <html lang="en">
       <body className={`${geist.className} bg-slate-50 antialiased`}>
         <ToastProvider>
-          <Sidebar />
-          <main className="md:ml-60 min-h-screen px-4 pt-[72px] pb-8 md:p-8">{children}</main>
+          <Shell>{children}</Shell>
         </ToastProvider>
       </body>
     </html>
