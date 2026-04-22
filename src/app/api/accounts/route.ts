@@ -7,10 +7,11 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const visibleIds = await getVisibleAccountIds(session.user.id, session.user.role);
-  const where = visibleIds ? { id: { in: visibleIds } } : {};
+  if (visibleIds !== null && visibleIds.length === 0)
+    return NextResponse.json([]);
 
   const accounts = await prisma.account.findMany({
-    where,
+    where: visibleIds !== null ? { id: { in: visibleIds } } : {},
     include: { currency: true },
     orderBy: { name: "asc" },
   });

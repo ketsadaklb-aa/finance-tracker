@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getSession, getVisibleAccountIds } from "@/lib/auth";
+import { getSession, getVisibleAccountIds, getVisibleContactIds } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const visibleIds = await getVisibleAccountIds(session.user.id, session.user.role);
-  const accountFilter = visibleIds ? { id: { in: visibleIds } } : {};
-  const txAccountFilter = visibleIds ? { accountId: { in: visibleIds } } : {};
+
+  const [visibleAccountIds, visibleContactIds] = await Promise.all([
+    getVisibleAccountIds(session.user.id, session.user.role),
+    getVisibleContactIds(session.user.id, session.user.role),
+  ]);
+
+  const accountFilter = visibleAccountIds !== null && visibleAccountIds.length > 0
+    ? { id: { in: visibleAccountIds } } : visibleAccountIds === null ? {} : { id: { in: ["__none__"] } };
+  const txAccountFilter = visibleAccountIds !== null && visibleAccountIds.length > 0
+    ? { accountId: { in: visibleAccountIds } } : visibleAccountIds === null ? {} : { accountId: { in: ["__none__"] } };
+  const contactFilter = visibleContactIds !== null && visibleContactIds.length > 0
+    ? { contactId: { in: visibleContactIds } } : visibleContactIds === null ? {} : { contactId: { in: ["__none__"] } };
 
   try {
     const { searchParams } = new URL(request.url);
@@ -29,7 +38,7 @@ export async function GET(request: NextRequest) {
     }
 
     const openReceivables = await prisma.receivable.findMany({
-      where: { status: { in: ["open", "partial"] } },
+      where: { status: { in: ["open", "partial"] }, ...contactFilter },
       select: { currencyId: true, remainingAmount: true },
     });
     const arByCurrency: Record<string, number> = {};
@@ -38,7 +47,7 @@ export async function GET(request: NextRequest) {
     }
 
     const openPayables = await prisma.payable.findMany({
-      where: { status: { in: ["open", "partial"] } },
+      where: { status: { in: ["open", "partial"] }, ...contactFilter },
       select: { currencyId: true, remainingAmount: true },
     });
     const apByCurrency: Record<string, number> = {};
@@ -71,6 +80,7 @@ export async function GET(request: NextRequest) {
 
     // --- AR Summary + overdue ---
     const allReceivables = await prisma.receivable.findMany({
+      where: contactFilter,
       select: { status: true, currencyId: true, remainingAmount: true, dueDate: true },
     });
     const arSummary = {
@@ -94,6 +104,7 @@ export async function GET(request: NextRequest) {
 
     // --- AP Summary + overdue ---
     const allPayables = await prisma.payable.findMany({
+      where: contactFilter,
       select: { status: true, currencyId: true, remainingAmount: true, dueDate: true },
     });
     const apSummary = {

@@ -13,6 +13,8 @@ export async function GET(request: NextRequest) {
     const contactId = searchParams.get("contactId");
 
     const visibleIds = await getVisibleContactIds(session.user.id, session.user.role);
+    if (visibleIds !== null && visibleIds.length === 0)
+      return NextResponse.json([]);
 
     const payables = await prisma.payable.findMany({
       where: {

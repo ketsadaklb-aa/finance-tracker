@@ -8,6 +8,8 @@ export async function GET() {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const visibleIds = await getVisibleContactIds(session.user.id, session.user.role);
+    if (visibleIds !== null && visibleIds.length === 0)
+      return NextResponse.json([]);
 
     const contacts = await prisma.contact.findMany({
       where: visibleIds !== null ? { id: { in: visibleIds } } : undefined,
