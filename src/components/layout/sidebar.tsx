@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, ArrowUpDown, Users,
-  TrendingDown, TrendingUp, Wallet, Upload, DollarSign, Menu, X, LogOut, Shield,
+  BookOpen, Wallet, Upload, DollarSign, Menu, X, LogOut, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -13,8 +13,7 @@ const nav = [
   { href: "/accounts",     label: "Accounts",          icon: Wallet },
   { href: "/transactions", label: "Transactions",      icon: ArrowUpDown },
   { href: "/contacts",     label: "Contacts",          icon: Users },
-  { href: "/receivables",  label: "Receivables (AR)",  icon: TrendingUp },
-  { href: "/payables",     label: "Payables (AP)",     icon: TrendingDown },
+  { href: "/ledger",       label: "AR / AP Ledger",    icon: BookOpen },
   { href: "/import",       label: "Import Statement",  icon: Upload },
 ];
 
