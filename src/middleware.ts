@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE } from "@/lib/auth";
 
+const SESSION_COOKIE = "ft_session";
 const PUBLIC_PATHS = ["/login", "/api/auth/login"];
 
 export function middleware(request: NextRequest) {
