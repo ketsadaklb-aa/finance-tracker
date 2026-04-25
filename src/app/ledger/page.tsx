@@ -159,13 +159,14 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
       // Pre-measure description text (leave 20mm on right for status badge)
       const descLines = doc.splitTextToSize(desc, CW - 8 - 20) as string[];
 
-      // Card height: top-pad + desc lines + date + divider + amounts + payments + bot-pad
-      const CPAD = 3.5;
-      const DESC_LH = 5;
-      const DATE_H = 5;
-      const DIV_H = 3;
-      const AMT_H = 6;
-      const PAY_H = 4.5;
+      // Card height — kept compact
+      const CPAD = 2;
+      const DESC_LH = 4.5;
+      const DATE_H = 4.5;
+      const DIV_H = 2;
+      // AMT_H = labels row (4) + values row (5.5) = 9.5
+      const AMT_H = 9.5;
+      const PAY_H = 4;
       const cardH = CPAD + descLines.length * DESC_LH + DATE_H + DIV_H + AMT_H
                   + item.payments.length * PAY_H + CPAD;
 
@@ -205,9 +206,9 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
       cy += descLines.length * DESC_LH;
 
       // Agreed / due date line
-      doc.setFontSize(7.5);
+      doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(100, 116, 139);
+      doc.setTextColor(51, 65, 85);
       doc.text("Agreed: " + fd(item.agreementDate) + "   |   " + dueLine, ML + 5, cy + 3.5);
       cy += DATE_H;
 
@@ -217,23 +218,47 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
       doc.line(ML + 4, cy + 0.5, ML + CW - 2, cy + 0.5);
       cy += DIV_H;
 
-      // Amounts row — CCY + Orig + Paid left, Rem right (bold, coloured)
-      doc.setFontSize(8.5);
+      // ── Three-column amounts (2 rows: labels+CCY / values) ──
+      const COL1 = ML + 5;
+      const COL2 = ML + 49;
+      const COL3 = ML + CW - 2;
+
+      // Row 1: CCY code + column labels inline (4mm)
+      doc.setFontSize(7);
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(71, 85, 105);
-      doc.text(
-        item.currency.code + "   Orig: " + num(item.originalAmount)
-        + "   " + (isAR ? "Rcvd" : "Paid") + ": " + num(item.paidAmount),
-        ML + 5, cy + 4
-      );
-      doc.setFont("helvetica", "bold");
+      doc.setTextColor(148, 163, 184);
+      doc.text(item.currency.code + "  Original", COL1, cy + 3.5);
+      doc.text(isAR ? "Received" : "Paid", COL2, cy + 3.5);
+      doc.text("Remaining", COL3, cy + 3.5, { align: "right" });
+      cy += 4;
+
+      // Row 2: values — Original + Paid in grey, Remaining in highlight box (5.5mm)
+      const ccy = item.currency.code;
       doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 116, 139);
+      doc.text(num(item.originalAmount) + " " + ccy, COL1, cy + 4.5);
+      doc.text(num(item.paidAmount) + " " + ccy, COL2, cy + 4.5);
+
+      // Measure remaining text at bold 10pt before drawing box
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      const remText = num(item.remainingAmount) + " " + ccy;
+      const remW = doc.getTextWidth(remText);
+      const REM_PAD = 2.5;
+      const boxX = COL3 - remW - REM_PAD * 2;
+      const boxY = cy + 0.2;
+      const boxH = 5.2;
+      if (item.status === "settled")       doc.setFillColor(220, 252, 231);
+      else if (overdue || !isAR)           doc.setFillColor(254, 226, 226);
+      else                                 doc.setFillColor(219, 234, 254);
+      doc.roundedRect(boxX, boxY, remW + REM_PAD * 2, boxH, 1.2, 1.2, "F");
       if (item.status === "settled")  doc.setTextColor(21, 128, 61);
       else if (overdue)               doc.setTextColor(220, 38, 38);
       else if (!isAR)                 doc.setTextColor(185, 28, 28);
       else                            doc.setTextColor(37, 99, 235);
-      doc.text("Rem: " + num(item.remainingAmount), ML + CW - 2, cy + 4, { align: "right" });
-      cy += AMT_H;
+      doc.text(remText, COL3 - REM_PAD, cy + 4.5, { align: "right" });
+      cy += 5.5;
 
       // Payment sub-rows
       for (const p of item.payments) {
@@ -251,7 +276,6 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
 
       y = cardY + cardH + 2; // 2mm gap between cards
 
-      const ccy = item.currency.code;
       if (!totals[ccy]) totals[ccy] = { orig: 0, paid: 0, rem: 0 };
       totals[ccy].orig += item.originalAmount;
       totals[ccy].paid += item.paidAmount;
@@ -268,7 +292,7 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
       doc.setFont("helvetica", "bold");
       doc.setTextColor(71, 85, 105);
       doc.text(
-        code + "   Orig: " + num(t.orig) + "   " + (isAR ? "Rcvd" : "Paid") + ": " + num(t.paid),
+        code + "   Original: " + num(t.orig) + "   " + (isAR ? "Received" : "Paid") + ": " + num(t.paid),
         ML + 3, y + 6
       );
       if (isAR) doc.setTextColor(30, 41, 59); else doc.setTextColor(185, 28, 28);
