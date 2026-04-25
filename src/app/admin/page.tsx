@@ -95,12 +95,32 @@ export default function AdminPage() {
     const updated = current.includes(userId)
       ? current.filter((id) => id !== userId)
       : [...current, userId];
-    await fetch(`/api/admin/contacts/${contactId}/access`, {
+    setContactAccessMap((prev) => ({ ...prev, [contactId]: updated }));
+    const res = await fetch(`/api/admin/contacts/${contactId}/access`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userIds: updated }),
     });
-    setContactAccessMap((prev) => ({ ...prev, [contactId]: updated }));
+    if (!res.ok) setContactAccessMap((prev) => ({ ...prev, [contactId]: current }));
+  }
+
+  async function grantAllForContact(contactId: string) {
+    const allIds = members.map((u) => u.id);
+    const res = await fetch(`/api/admin/contacts/${contactId}/access`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userIds: allIds }),
+    });
+    if (res.ok) setContactAccessMap((prev) => ({ ...prev, [contactId]: allIds }));
+  }
+
+  async function revokeAllForContact(contactId: string) {
+    const res = await fetch(`/api/admin/contacts/${contactId}/access`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userIds: [] }),
+    });
+    if (res.ok) setContactAccessMap((prev) => ({ ...prev, [contactId]: [] }));
   }
 
   async function grantAllContacts(userId: string) {
@@ -113,8 +133,8 @@ export default function AdminPage() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userIds: updated }),
-        }).then(() => {
-          setContactAccessMap((prev) => ({ ...prev, [c.id]: updated }));
+        }).then((res) => {
+          if (res.ok) setContactAccessMap((prev) => ({ ...prev, [c.id]: updated }));
         });
       })
     );
@@ -130,8 +150,8 @@ export default function AdminPage() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userIds: updated }),
-        }).then(() => {
-          setContactAccessMap((prev) => ({ ...prev, [c.id]: updated }));
+        }).then((res) => {
+          if (res.ok) setContactAccessMap((prev) => ({ ...prev, [c.id]: updated }));
         });
       })
     );
@@ -300,19 +320,11 @@ export default function AdminPage() {
                     </span>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => {
-                      members.forEach(u => {
-                        if (!(contactAccessMap[contact.id] ?? []).includes(u.id))
-                          toggleContactAccess(contact.id, u.id);
-                      });
-                    }} className="text-xs text-blue-600 hover:underline">Grant all</button>
+                    <button onClick={() => grantAllForContact(contact.id)}
+                      className="text-xs text-blue-600 hover:underline">Grant all</button>
                     <span className="text-slate-300">·</span>
-                    <button onClick={() => {
-                      members.forEach(u => {
-                        if ((contactAccessMap[contact.id] ?? []).includes(u.id))
-                          toggleContactAccess(contact.id, u.id);
-                      });
-                    }} className="text-xs text-red-500 hover:underline">Revoke all</button>
+                    <button onClick={() => revokeAllForContact(contact.id)}
+                      className="text-xs text-red-500 hover:underline">Revoke all</button>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-3">

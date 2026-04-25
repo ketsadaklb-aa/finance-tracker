@@ -12,7 +12,7 @@ import { formatAmount, formatDate, getAgingLabel } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import {
   Plus, ChevronDown, ChevronUp, Pencil, Trash2, AlertCircle,
-  CheckCircle2, X, Paperclip, Upload, TrendingUp, TrendingDown, Users,
+  CheckCircle2, X, Paperclip, Upload, TrendingUp, TrendingDown, Users, FileDown, Loader2,
 } from "lucide-react";
 
 interface Currency { id: string; code: string; symbol: string }
@@ -33,12 +33,267 @@ const emptyForm = (contactId = "") => ({
   agreementDate: new Date().toISOString().slice(0, 10), dueDate: "", note: "",
 });
 
+// Compress image to max 1200px wide / 1600px tall, JPEG 75% quality.
+// PDFs pass through unchanged.
+async function compressImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_W = 1200, MAX_H = 1600;
+        let { width, height } = img;
+        if (width > MAX_W) { height = Math.round(height * MAX_W / width); width = MAX_W; }
+        if (height > MAX_H) { width = Math.round(width * MAX_H / height); height = MAX_H; }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => resolve(blob
+            ? new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" })
+            : file),
+          "image/jpeg", 0.75
+        );
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 async function uploadFile(file: File): Promise<string | null> {
+  const compressed = await compressImage(file);
   const fd = new FormData();
-  fd.append("file", file);
+  fd.append("file", compressed);
   const res = await fetch("/api/upload", { method: "POST", body: fd });
   if (!res.ok) return null;
   return (await res.json()).url as string;
+}
+
+function toBlobUrl(rawUrl: string): { blobUrl: string; isImage: boolean } | null {
+  if (!rawUrl) return null;
+  if (rawUrl.startsWith("data:")) {
+    const [header, b64] = rawUrl.split(",");
+    const mime = header.match(/data:([^;]+)/)?.[1] ?? "application/octet-stream";
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: mime });
+    return { blobUrl: URL.createObjectURL(blob), isImage: mime.startsWith("image/") };
+  }
+  const isImage = /\.(jpg|jpeg|png|webp)$/i.test(rawUrl);
+  return { blobUrl: rawUrl, isImage };
+}
+
+async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) {
+  const { default: jsPDF } = await import("jspdf");
+
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
+  const PAGE_W = 148;
+  const ML = 8;
+  const MR = 8;
+  const CW = PAGE_W - ML - MR; // 132mm
+  const FOOTER_Y = 204;
+  const MAX_Y = FOOTER_Y - 6;
+
+  const num = (v: number) => Math.round(v).toLocaleString("en-US");
+  const fd = (d: string | Date) =>
+    (typeof d === "string" ? new Date(d) : d).toLocaleDateString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+    });
+  const now = new Date();
+
+  let y = 0;
+  const checkY = (needed: number) => { if (y + needed > MAX_Y) { doc.addPage(); y = 14; } };
+
+  // ── Header (page 1) ──
+  doc.setFillColor(30, 64, 175);
+  doc.rect(0, 0, PAGE_W, 28, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text(contact.name, ML, 14);
+  doc.setFontSize(8.5);
+  doc.setFont("helvetica", "normal");
+  doc.text("AR / AP Statement   |   " + fd(now), ML, 22);
+  doc.setTextColor(30, 41, 59);
+  y = 34;
+
+  const drawSection = (items: ARItem[], type: "ar" | "ap") => {
+    const isAR = type === "ar";
+
+    // Section header bar
+    checkY(14);
+    if (isAR) doc.setFillColor(220, 252, 231); else doc.setFillColor(254, 226, 226);
+    doc.rect(ML, y, CW, 8, "F");
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    if (isAR) doc.setTextColor(21, 128, 61); else doc.setTextColor(185, 28, 28);
+    doc.text(
+      isAR ? "Receivables (AR)  -  " + contact.name + " owes you"
+           : "Payables (AP)  -  You owe " + contact.name,
+      ML + 3, y + 5.5
+    );
+    doc.setTextColor(30, 41, 59);
+    y += 11;
+
+    if (items.length === 0) {
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(148, 163, 184);
+      doc.text("No records.", ML + 2, y + 4);
+      doc.setTextColor(30, 41, 59);
+      y += 10;
+      return;
+    }
+
+    const totals: Record<string, { orig: number; paid: number; rem: number }> = {};
+
+    for (const item of items) {
+      const overdue = !!(item.dueDate && new Date(item.dueDate) < now && item.status !== "settled");
+      const statusText = item.status === "settled" ? "SETTLED" : item.status === "partial" ? "PARTIAL" : "OPEN";
+      const desc = item.description || "(No description)";
+      const dueLine = item.dueDate
+        ? "Due: " + fd(item.dueDate) + (overdue ? "  OVERDUE!" : "")
+        : "No due date";
+
+      // Pre-measure description text (leave 20mm on right for status badge)
+      const descLines = doc.splitTextToSize(desc, CW - 8 - 20) as string[];
+
+      // Card height: top-pad + desc lines + date + divider + amounts + payments + bot-pad
+      const CPAD = 3.5;
+      const DESC_LH = 5;
+      const DATE_H = 5;
+      const DIV_H = 3;
+      const AMT_H = 6;
+      const PAY_H = 4.5;
+      const cardH = CPAD + descLines.length * DESC_LH + DATE_H + DIV_H + AMT_H
+                  + item.payments.length * PAY_H + CPAD;
+
+      checkY(cardH + 3);
+      const cardY = y;
+
+      // Card background
+      doc.setFillColor(249, 250, 251);
+      doc.rect(ML, cardY, CW, cardH, "F");
+
+      // Left coloured border (status indicator)
+      if (item.status === "settled")  doc.setFillColor(21, 128, 61);
+      else if (overdue)               doc.setFillColor(220, 38, 38);
+      else if (isAR)                  doc.setFillColor(37, 99, 235);
+      else                            doc.setFillColor(185, 28, 28);
+      doc.rect(ML, cardY, 3, cardH, "F");
+
+      let cy = cardY + CPAD;
+
+      // Status badge (top-right)
+      if (item.status === "settled")       doc.setFillColor(220, 252, 231);
+      else if (item.status === "partial")  doc.setFillColor(255, 237, 213);
+      else                                 doc.setFillColor(254, 226, 226);
+      doc.roundedRect(ML + CW - 19, cy, 17, 5.5, 1.5, 1.5, "F");
+      doc.setFontSize(6.5);
+      doc.setFont("helvetica", "bold");
+      if (item.status === "settled")       doc.setTextColor(21, 128, 61);
+      else if (item.status === "partial")  doc.setTextColor(154, 52, 18);
+      else                                 doc.setTextColor(185, 28, 28);
+      doc.text(statusText, ML + CW - 10.5, cy + 3.9, { align: "center" });
+
+      // Description (bold)
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 41, 59);
+      doc.text(descLines, ML + 5, cy + 4);
+      cy += descLines.length * DESC_LH;
+
+      // Agreed / due date line
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 116, 139);
+      doc.text("Agreed: " + fd(item.agreementDate) + "   |   " + dueLine, ML + 5, cy + 3.5);
+      cy += DATE_H;
+
+      // Thin divider
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.2);
+      doc.line(ML + 4, cy + 0.5, ML + CW - 2, cy + 0.5);
+      cy += DIV_H;
+
+      // Amounts row — CCY + Orig + Paid left, Rem right (bold, coloured)
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text(
+        item.currency.code + "   Orig: " + num(item.originalAmount)
+        + "   " + (isAR ? "Rcvd" : "Paid") + ": " + num(item.paidAmount),
+        ML + 5, cy + 4
+      );
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      if (item.status === "settled")  doc.setTextColor(21, 128, 61);
+      else if (overdue)               doc.setTextColor(220, 38, 38);
+      else if (!isAR)                 doc.setTextColor(185, 28, 28);
+      else                            doc.setTextColor(37, 99, 235);
+      doc.text("Rem: " + num(item.remainingAmount), ML + CW - 2, cy + 4, { align: "right" });
+      cy += AMT_H;
+
+      // Payment sub-rows
+      for (const p of item.payments) {
+        doc.setFontSize(7.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(100, 116, 139);
+        const note = p.note ? "  " + p.note.substring(0, 28) : "";
+        doc.text("  Payment  " + fd(p.date) + note, ML + 5, cy + 3.2);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        if (isAR) doc.setTextColor(21, 128, 61); else doc.setTextColor(37, 99, 235);
+        doc.text(num(p.amount) + " " + p.currency.code, ML + CW - 2, cy + 3.2, { align: "right" });
+        cy += PAY_H;
+      }
+
+      y = cardY + cardH + 2; // 2mm gap between cards
+
+      const ccy = item.currency.code;
+      if (!totals[ccy]) totals[ccy] = { orig: 0, paid: 0, rem: 0 };
+      totals[ccy].orig += item.originalAmount;
+      totals[ccy].paid += item.paidAmount;
+      totals[ccy].rem += item.remainingAmount;
+    }
+
+    // Per-currency totals block
+    y += 2;
+    for (const [code, t] of Object.entries(totals)) {
+      checkY(11);
+      doc.setFillColor(241, 245, 249);
+      doc.rect(ML, y, CW, 9, "F");
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(71, 85, 105);
+      doc.text(
+        code + "   Orig: " + num(t.orig) + "   " + (isAR ? "Rcvd" : "Paid") + ": " + num(t.paid),
+        ML + 3, y + 6
+      );
+      if (isAR) doc.setTextColor(30, 41, 59); else doc.setTextColor(185, 28, 28);
+      doc.text("Remaining: " + num(t.rem) + " " + code, ML + CW - 2, y + 6, { align: "right" });
+      y += 11;
+    }
+    y += 4;
+  };
+
+  drawSection(ar, "ar");
+  checkY(20);
+  drawSection(ap, "ap");
+
+  // Footer on every page
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(148, 163, 184);
+    doc.text("Catdy's AR AP Tracker  |  Confidential", ML, FOOTER_Y);
+    doc.text(i + " / " + pages, PAGE_W - MR, FOOTER_Y, { align: "right" });
+  }
+
+  doc.save(contact.name + " - AR AP Statement.pdf");
 }
 
 function totalsFor(items: ARItem[]) {
@@ -66,7 +321,8 @@ function tableTotals(items: ARItem[]) {
 // ─── Reusable items table ────────────────────────────────────────────────────
 function ItemsTable({
   items, type, expanded, onToggle, onEdit, onDelete, onPayOpen, onMarkSettled,
-  onDeletePayment, onTriggerAttach, uploading,
+  onDeletePayment, onTriggerAttach, onReplaceRecordAttach, onRemoveRecordAttach,
+  onRemovePaymentAttach, onViewAttachment, uploading, uploadingPaymentId, uploadingRecordId,
 }: {
   items: ARItem[];
   type: "ar" | "ap";
@@ -78,9 +334,17 @@ function ItemsTable({
   onMarkSettled: (item: ARItem) => void;
   onDeletePayment: (itemId: string, paymentId: string) => void;
   onTriggerAttach: (itemId: string, paymentId: string) => void;
+  onReplaceRecordAttach: (itemId: string) => void;
+  onRemoveRecordAttach: (itemId: string) => void;
+  onRemovePaymentAttach: (itemId: string, paymentId: string) => void;
+  onViewAttachment: (url: string) => void;
   uploading: boolean;
+  uploadingPaymentId: string | null;
+  uploadingRecordId: string | null;
 }) {
   const now = new Date();
+  const [pendingDeletePayment, setPendingDeletePayment] = useState<string | null>(null);
+  // uploadingPaymentId comes from parent so we know exactly which row is uploading
   const isOverdue = (r: ARItem) => r.dueDate && new Date(r.dueDate) < now && r.status !== "settled";
   const accentPaid = type === "ar" ? "text-green-600" : "text-blue-600";
   const accentRemaining = type === "ar" ? "text-slate-800" : "text-red-600";
@@ -122,10 +386,25 @@ function ItemsTable({
                       <span className="flex items-center gap-1 truncate">
                         <span className="truncate">{r.description || <span className="text-slate-300">—</span>}</span>
                         {r.attachmentUrl && (
-                          <a href={r.attachmentUrl} target="_blank" rel="noopener noreferrer"
-                            className="shrink-0 text-blue-400 hover:text-blue-600">
-                            <Paperclip className="h-3 w-3" />
-                          </a>
+                          <span className="flex items-center gap-0.5 shrink-0">
+                            <button onClick={() => onViewAttachment(r.attachmentUrl!)}
+                              title="View document"
+                              className="p-0.5 rounded bg-blue-50 text-blue-500 hover:bg-blue-100">
+                              <Paperclip className="h-3.5 w-3.5" />
+                            </button>
+                            <button disabled={uploading} onClick={() => onReplaceRecordAttach(r.id)}
+                              title="Replace document"
+                              className="p-0.5 rounded bg-slate-100 text-slate-400 hover:bg-slate-200 disabled:opacity-40">
+                              {uploadingRecordId === r.id
+                                ? <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                                : <Upload className="h-3 w-3" />}
+                            </button>
+                            <button onClick={() => onRemoveRecordAttach(r.id)}
+                              title="Remove document"
+                              className="p-0.5 rounded text-slate-300 hover:text-red-500 hover:bg-red-50">
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </span>
                         )}
                       </span>
                     </td>
@@ -174,25 +453,51 @@ function ItemsTable({
                       <div className="bg-slate-50 rounded-lg p-3 space-y-1.5">
                         <p className="text-xs font-medium text-slate-400 mb-2">Payment History — {r.currency.code}</p>
                         {r.payments.map(p => (
-                          <div key={p.id} className="flex justify-between items-center text-xs text-slate-600 group/pay py-0.5">
-                            <span>{formatDate(p.date)}{p.note ? ` · ${p.note}` : ""}</span>
-                            <div className="flex items-center gap-2">
-                              <span className={`font-medium ${accentPaid}`}>{formatAmount(p.amount, r.currency.symbol)}</span>
-                              {p.attachmentUrl ? (
-                                <a href={p.attachmentUrl} target="_blank" rel="noopener noreferrer"
-                                  className="p-0.5 rounded hover:bg-blue-100 text-blue-400">
-                                  <Paperclip className="h-3 w-3" />
-                                </a>
+                          <div key={p.id} className="flex justify-between items-center text-xs text-slate-600 py-1.5 border-b border-slate-100 last:border-0">
+                            <span className="flex-1 min-w-0 truncate mr-2">{formatDate(p.date)}{p.note ? ` · ${p.note}` : ""}</span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className={`font-medium ${accentPaid} mr-1`}>{formatAmount(p.amount, r.currency.symbol)}</span>
+                              {p.attachmentUrl && (
+                                <>
+                                  <button onClick={() => onViewAttachment(p.attachmentUrl!)}
+                                    title="View attachment"
+                                    className="p-1 rounded bg-blue-50 text-blue-500 hover:bg-blue-100">
+                                    <Paperclip className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button onClick={() => onRemovePaymentAttach(r.id, p.id)}
+                                    title="Remove attachment"
+                                    className="p-1 rounded text-slate-300 hover:text-orange-500 hover:bg-orange-50">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
+                              )}
+                              <button disabled={uploading} onClick={() => onTriggerAttach(r.id, p.id)}
+                                title={p.attachmentUrl ? "Replace attachment" : "Attach payment slip"}
+                                className="p-1 rounded bg-slate-100 text-slate-400 hover:bg-slate-200 disabled:opacity-40">
+                                {uploadingPaymentId === p.id
+                                  ? <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
+                                  : <Upload className="h-3.5 w-3.5" />}
+                              </button>
+                              {pendingDeletePayment === p.id ? (
+                                <span className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => { onDeletePayment(r.id, p.id); setPendingDeletePayment(null); }}
+                                    className="px-1.5 py-0.5 rounded text-xs font-semibold bg-red-500 text-white hover:bg-red-600">
+                                    Delete
+                                  </button>
+                                  <button
+                                    onClick={() => setPendingDeletePayment(null)}
+                                    className="p-1 rounded text-slate-400 hover:bg-slate-100">
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </span>
                               ) : (
-                                <button disabled={uploading} onClick={() => onTriggerAttach(r.id, p.id)}
-                                  className="opacity-0 group-hover/pay:opacity-100 p-0.5 rounded hover:bg-slate-200 text-slate-300">
-                                  <Upload className="h-3 w-3" />
+                                <button onClick={() => setPendingDeletePayment(p.id)}
+                                  title="Delete payment"
+                                  className="p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50">
+                                  <X className="h-3.5 w-3.5" />
                                 </button>
                               )}
-                              <button onClick={() => onDeletePayment(r.id, p.id)}
-                                className="opacity-0 group-hover/pay:opacity-100 p-0.5 rounded hover:bg-red-100 text-slate-300 hover:text-red-500">
-                                <X className="h-3 w-3" />
-                              </button>
                             </div>
                           </div>
                         ))}
@@ -254,10 +559,22 @@ export default function LedgerPage() {
   const [uploading, setUploading] = useState(false);
   const [attachingPayment, setAttachingPayment] = useState<{ itemId: string; paymentId: string; type: "ar" | "ap" } | null>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
+  const [attachingRecord, setAttachingRecord] = useState<{ itemId: string; type: "ar" | "ap" } | null>(null);
+  const attachRecordRef = useRef<HTMLInputElement>(null);
   const [settleDialog, setSettleDialog] = useState<{ item: ARItem; type: "ar" | "ap" } | null>(null);
   const [settleFile, setSettleFile] = useState<File | null>(null);
   const [settleNote, setSettleNote] = useState("Settlement");
   const [settleDate, setSettleDate] = useState(new Date().toISOString().slice(0, 10));
+  const [attachViewer, setAttachViewer] = useState<{ url: string; isImage: boolean } | null>(null);
+
+  function viewAttachment(rawUrl: string) {
+    const result = toBlobUrl(rawUrl);
+    if (result) setAttachViewer({ url: result.blobUrl, isImage: result.isImage });
+  }
+  function closeViewer() {
+    if (attachViewer?.url.startsWith("blob:")) URL.revokeObjectURL(attachViewer.url);
+    setAttachViewer(null);
+  }
 
   function fetchAll() {
     fetch("/api/receivables").then(r => r.json()).then(d => { if (Array.isArray(d)) setReceivables(d); });
@@ -468,13 +785,87 @@ export default function LedgerPage() {
         ...x, payments: x.payments.map(p => p.id === paymentId ? { ...p, attachmentUrl: url } : p),
       } : x));
       toast("Slip attached");
+      viewAttachment(url);
+    } else {
+      toast("Failed to save attachment", "error");
     }
   }
+
+  // ── Record-level attachment handlers ────────────────────────────────────────
+
+  function triggerReplaceRecord(itemId: string, type: "ar" | "ap") {
+    setAttachingRecord({ itemId, type });
+    attachRecordRef.current?.click();
+  }
+
+  async function handleAttachRecordFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !attachingRecord) return;
+    e.target.value = "";
+    setUploading(true);
+    const url = await uploadFile(file);
+    setUploading(false);
+    if (!url) { toast("Upload failed", "error"); setAttachingRecord(null); return; }
+    const { itemId, type } = attachingRecord;
+    const base = type === "ar" ? "/api/receivables" : "/api/payables";
+    const res = await fetch(`${base}/${itemId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ attachmentUrl: url }),
+    });
+    setAttachingRecord(null);
+    if (res.ok) {
+      const setter = type === "ar" ? setReceivables : setPayables;
+      setter(prev => prev.map(x => x.id === itemId ? { ...x, attachmentUrl: url } : x));
+      toast("Document replaced");
+      viewAttachment(url);
+    } else {
+      toast("Failed to save", "error");
+    }
+  }
+
+  async function handleRemoveRecordAttach(itemId: string, type: "ar" | "ap") {
+    const base = type === "ar" ? "/api/receivables" : "/api/payables";
+    const res = await fetch(`${base}/${itemId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ attachmentUrl: null }),
+    });
+    if (res.ok) {
+      const setter = type === "ar" ? setReceivables : setPayables;
+      setter(prev => prev.map(x => x.id === itemId ? { ...x, attachmentUrl: null } : x));
+      toast("Attachment removed");
+    } else {
+      toast("Failed to remove", "error");
+    }
+  }
+
+  async function handleRemovePaymentAttach(itemId: string, paymentId: string, type: "ar" | "ap") {
+    const base = type === "ar" ? "/api/receivables" : "/api/payables";
+    const res = await fetch(`${base}/${itemId}/payments/${paymentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ attachmentUrl: null }),
+    });
+    if (res.ok) {
+      const setter = type === "ar" ? setReceivables : setPayables;
+      setter(prev => prev.map(x => x.id === itemId ? {
+        ...x,
+        payments: x.payments.map(p => p.id === paymentId ? { ...p, attachmentUrl: null } : p),
+      } : x));
+      toast("Attachment removed");
+    } else {
+      toast("Failed to remove", "error");
+    }
+  }
+
 
   return (
     <div className="space-y-6 animate-fade-in">
       <input ref={attachInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf"
         className="hidden" onChange={handleAttachFile} />
+      <input ref={attachRecordRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf"
+        className="hidden" onChange={handleAttachRecordFile} />
 
       <div className="flex items-center justify-between">
         <div>
@@ -503,16 +894,16 @@ export default function LedgerPage() {
 
             return (
               <div key={contact.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                {/* Contact header — click to expand */}
-                <button
-                  onClick={() => toggleContact(contact.id)}
-                  className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors text-left"
-                >
-                  <div className="flex items-center gap-3">
+                {/* Contact header */}
+                <div className="flex items-center px-5 py-4 hover:bg-slate-50 transition-colors">
+                  <button
+                    onClick={() => toggleContact(contact.id)}
+                    className="flex-1 flex items-center gap-3 text-left min-w-0"
+                  >
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shrink-0">
                       <span className="text-white text-sm font-bold">{contact.name.charAt(0).toUpperCase()}</span>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-semibold text-slate-800">{contact.name}</p>
                       <div className="flex gap-2 mt-0.5 flex-wrap">
                         {arOpen > 0 && (
@@ -536,9 +927,21 @@ export default function LedgerPage() {
                         )}
                       </div>
                     </div>
+                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                    <button
+                      onClick={() => downloadContactPDF(contact, ar, ap)}
+                      title="Download PDF statement"
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors border border-blue-200"
+                    >
+                      <FileDown className="h-3.5 w-3.5" />
+                      PDF
+                    </button>
+                    <button onClick={() => toggleContact(contact.id)} className="p-1 rounded hover:bg-slate-100">
+                      {isOpen ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                    </button>
                   </div>
-                  {isOpen ? <ChevronUp className="h-4 w-4 text-slate-400 shrink-0" /> : <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />}
-                </button>
+                </div>
 
                 {/* Expanded content */}
                 {isOpen && (
@@ -596,7 +999,13 @@ export default function LedgerPage() {
                         }}
                         onDeletePayment={(itemId, paymentId) => handleDeletePayment(itemId, paymentId, tab)}
                         onTriggerAttach={(itemId, paymentId) => triggerAttach(itemId, paymentId, tab)}
+                        onReplaceRecordAttach={(itemId) => triggerReplaceRecord(itemId, tab)}
+                        onRemoveRecordAttach={(itemId) => handleRemoveRecordAttach(itemId, tab)}
+                        onRemovePaymentAttach={(itemId, paymentId) => handleRemovePaymentAttach(itemId, paymentId, tab)}
+                        onViewAttachment={viewAttachment}
                         uploading={uploading}
+                        uploadingPaymentId={uploading && attachingPayment ? attachingPayment.paymentId : null}
+                        uploadingRecordId={uploading && attachingRecord ? attachingRecord.itemId : null}
                       />
                     </div>
                   </div>
@@ -609,115 +1018,126 @@ export default function LedgerPage() {
 
       {/* Add / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={v => { setDialogOpen(v); if (!v) { setEditRecord(null); setForm(emptyForm()); setRecordFile(null); } }}>
-        <DialogContent>
-          <DialogHeader>
+        {/* flex flex-col + overflow-hidden so only the body scrolls, footer stays fixed */}
+        <DialogContent className="flex flex-col overflow-hidden p-0 gap-0">
+          {/* Fixed header */}
+          <DialogHeader className="px-5 pt-5 pb-4 border-b border-slate-100 shrink-0">
             <DialogTitle>
               {editRecord ? "Edit" : "New"} {dialogType === "ar" ? "Receivable" : "Payable"}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {!editRecord && (
-              <div className="flex gap-2">
-                <button type="button"
-                  onClick={() => setDialogType("ar")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                    dialogType === "ar"
-                      ? "bg-green-50 border-green-400 text-green-700"
-                      : "border-slate-200 text-slate-400 hover:border-slate-300"
-                  }`}>
-                  <TrendingUp className="h-4 w-4" /> Receivable (AR)
-                </button>
-                <button type="button"
-                  onClick={() => setDialogType("ap")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                    dialogType === "ap"
-                      ? "bg-red-50 border-red-400 text-red-700"
-                      : "border-slate-200 text-slate-400 hover:border-slate-300"
-                  }`}>
-                  <TrendingDown className="h-4 w-4" /> Payable (AP)
-                </button>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Contact</Label>
-                <Select value={form.contactId} onValueChange={v => setForm(f => ({ ...f, contactId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
-                  <SelectContent>{contacts.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Currency</Label>
-                {editRecord ? (
-                  <Input value={editRecord.currency.code} disabled className="bg-slate-50 text-slate-500" />
-                ) : (
-                  <Select value={form.currencyId} onValueChange={v => setForm(f => ({ ...f, currencyId: v }))}>
+
+          {/* Scrollable body */}
+          <div className="overflow-y-auto flex-1 px-5 py-4">
+            <form id="ledger-form" onSubmit={handleSubmit} className="space-y-4">
+              {!editRecord && (
+                <div className="flex gap-2">
+                  <button type="button"
+                    onClick={() => setDialogType("ar")}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                      dialogType === "ar"
+                        ? "bg-green-50 border-green-400 text-green-700"
+                        : "border-slate-200 text-slate-400 hover:border-slate-300"
+                    }`}>
+                    <TrendingUp className="h-4 w-4" /> Receivable (AR)
+                  </button>
+                  <button type="button"
+                    onClick={() => setDialogType("ap")}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                      dialogType === "ap"
+                        ? "bg-red-50 border-red-400 text-red-700"
+                        : "border-slate-200 text-slate-400 hover:border-slate-300"
+                    }`}>
+                    <TrendingDown className="h-4 w-4" /> Payable (AP)
+                  </button>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Contact</Label>
+                  <Select value={form.contactId} onValueChange={v => setForm(f => ({ ...f, contactId: v }))}>
                     <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
-                    <SelectContent>{currencies.map(c => <SelectItem key={c.id} value={c.id}>{c.code}</SelectItem>)}</SelectContent>
+                    <SelectContent>{contacts.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                   </Select>
-                )}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Amount</Label>
-              <AmountInput placeholder="0" value={form.originalAmount}
-                onChange={v => setForm(f => ({ ...f, originalAmount: v }))} required />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Description (optional)</Label>
-              <Input placeholder="What is this for?" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Agreement Date</Label>
-                <Input type="date" value={form.agreementDate} onChange={e => setForm(f => ({ ...f, agreementDate: e.target.value }))} required />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Currency</Label>
+                  {editRecord ? (
+                    <Input value={editRecord.currency.code} disabled className="bg-slate-50 text-slate-500" />
+                  ) : (
+                    <Select value={form.currencyId} onValueChange={v => setForm(f => ({ ...f, currencyId: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+                      <SelectContent>{currencies.map(c => <SelectItem key={c.id} value={c.id}>{c.code}</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
+                </div>
               </div>
               <div className="space-y-1.5">
-                <Label>Due Date (optional)</Label>
-                <Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} />
+                <Label>Amount</Label>
+                <AmountInput placeholder="0" value={form.originalAmount}
+                  onChange={v => setForm(f => ({ ...f, originalAmount: v }))} required />
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Note (optional)</Label>
-              <Textarea placeholder="Additional notes..." value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Document (optional)</Label>
-              {editRecord?.attachmentUrl && !recordFile ? (
-                <div className="flex items-center gap-2 text-sm">
-                  <a href={editRecord.attachmentUrl} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-blue-500 hover:text-blue-700">
-                    <Paperclip className="h-4 w-4" />View document
-                  </a>
-                  <label className="text-slate-500 cursor-pointer underline text-xs ml-2">
-                    Replace
+              <div className="space-y-1.5">
+                <Label>Description (optional)</Label>
+                <Input placeholder="What is this for?" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Agreement Date</Label>
+                  <Input type="date" value={form.agreementDate} onChange={e => setForm(f => ({ ...f, agreementDate: e.target.value }))} required />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Due Date (optional)</Label>
+                  <Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Note (optional)</Label>
+                <Textarea placeholder="Additional notes..." value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Document (optional)</Label>
+                {editRecord?.attachmentUrl && !recordFile ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    <button type="button" onClick={() => viewAttachment(editRecord.attachmentUrl!)}
+                      className="flex items-center gap-1.5 text-blue-500 hover:text-blue-700">
+                      <Paperclip className="h-4 w-4" />View document
+                    </button>
+                    <label className="text-slate-500 cursor-pointer underline text-xs ml-2">
+                      Replace
+                      <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
+                        onChange={e => setRecordFile(e.target.files?.[0] ?? null)} />
+                    </label>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-3 cursor-pointer border border-dashed border-slate-200 rounded-lg px-3 py-2.5 hover:bg-slate-50">
+                    <Paperclip className="h-4 w-4 text-slate-400 shrink-0" />
+                    <span className="text-sm text-slate-500 truncate">
+                      {recordFile ? recordFile.name : "Attach JPG, PNG, or PDF"}
+                    </span>
                     <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
                       onChange={e => setRecordFile(e.target.files?.[0] ?? null)} />
                   </label>
-                </div>
-              ) : (
-                <label className="flex items-center gap-3 cursor-pointer border border-dashed border-slate-200 rounded-lg px-3 py-2.5 hover:bg-slate-50">
-                  <Paperclip className="h-4 w-4 text-slate-400 shrink-0" />
-                  <span className="text-sm text-slate-500 truncate">
-                    {recordFile ? recordFile.name : "Attach JPG, PNG, or PDF"}
-                  </span>
-                  <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
-                    onChange={e => setRecordFile(e.target.files?.[0] ?? null)} />
-                </label>
-              )}
-              {recordFile && (
-                <button type="button" onClick={() => setRecordFile(null)} className="text-xs text-red-400 flex items-center gap-1">
-                  <X className="h-3 w-3" /> Remove
-                </button>
-              )}
-            </div>
+                )}
+                {recordFile && (
+                  <button type="button" onClick={() => setRecordFile(null)} className="text-xs text-red-400 flex items-center gap-1">
+                    <X className="h-3 w-3" /> Remove
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+
+          {/* Fixed footer — always visible, never scrolls away */}
+          <div className="px-5 py-4 border-t border-slate-100 shrink-0">
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={loading || uploading || !form.contactId || (!editRecord && !form.currencyId) || !form.originalAmount}>
+              <Button type="submit" form="ledger-form"
+                disabled={loading || uploading || !form.contactId || (!editRecord && !form.currencyId) || !form.originalAmount}>
                 {uploading ? "Uploading..." : loading ? "Saving..." : editRecord ? "Update" : "Save"}
               </Button>
             </DialogFooter>
-          </form>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -844,6 +1264,71 @@ export default function LedgerPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Inline attachment viewer ── */}
+      {attachViewer && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80"
+          onClick={closeViewer}
+        >
+          <div
+            className="relative bg-white w-full sm:w-auto sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            style={{ maxWidth: "min(96vw, 720px)", maxHeight: "92vh" }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Toolbar */}
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-800 shrink-0">
+              <span className="text-white text-sm font-semibold">
+                {attachViewer.isImage ? "Photo / Image" : "PDF Document"}
+              </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={attachViewer.url}
+                  download="attachment"
+                  className="flex items-center gap-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg font-medium transition-colors"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <FileDown className="h-4 w-4" /> Download
+                </a>
+                <button
+                  onClick={closeViewer}
+                  className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            {attachViewer.isImage ? (
+              <div className="overflow-auto bg-slate-100 flex items-center justify-center" style={{ minHeight: "40vh", maxHeight: "80vh" }}>
+                <img
+                  src={attachViewer.url}
+                  alt="Attachment"
+                  className="max-w-full max-h-full object-contain"
+                  style={{ maxHeight: "80vh" }}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col" style={{ height: "75vh" }}>
+                <iframe
+                  src={attachViewer.url}
+                  title="Document"
+                  className="flex-1 w-full bg-white"
+                />
+                {/* Fallback hint for mobile PDF */}
+                <div className="bg-amber-50 border-t border-amber-200 px-4 py-2 text-xs text-amber-700 flex items-center gap-2 shrink-0">
+                  <span>PDF not displaying?</span>
+                  <a href={attachViewer.url} download="attachment"
+                    className="font-semibold underline" onClick={e => e.stopPropagation()}>
+                    Tap here to download
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,13 +8,17 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const nav = [
+const adminNav = [
   { href: "/",             label: "Dashboard",        icon: LayoutDashboard },
   { href: "/accounts",     label: "Accounts",          icon: Wallet },
   { href: "/transactions", label: "Transactions",      icon: ArrowUpDown },
   { href: "/contacts",     label: "Contacts",          icon: Users },
   { href: "/ledger",       label: "AR / AP Ledger",    icon: BookOpen },
   { href: "/import",       label: "Import Statement",  icon: Upload },
+];
+
+const memberNav = [
+  { href: "/ledger", label: "AR / AP Ledger", icon: BookOpen },
 ];
 
 function Logo() {
@@ -33,6 +37,7 @@ function Logo() {
 
 function NavLinks({ onNavigate, isAdmin }: { onNavigate?: () => void; isAdmin: boolean }) {
   const pathname = usePathname();
+  const nav = isAdmin ? adminNav : memberNav;
   return (
     <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
       <p className="text-blue-400 text-xs font-semibold uppercase tracking-widest px-3 mb-3">Menu</p>

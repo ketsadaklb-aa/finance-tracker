@@ -20,12 +20,14 @@ export async function POST(request: NextRequest) {
   await prisma.session.create({ data: { userId: user.id, token, expiresAt } });
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(SESSION_COOKIE, token, {
+  const cookieOpts = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "lax" as const,
     expires: expiresAt,
     path: "/",
-  });
+  };
+  response.cookies.set(SESSION_COOKIE, token, cookieOpts);
+  response.cookies.set("ft_role", user.role, cookieOpts);
   return response;
 }
