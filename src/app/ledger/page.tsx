@@ -88,6 +88,23 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
   const { default: jsPDF } = await import("jspdf");
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
+
+  // Embed Noto Sans Lao so Lao script renders correctly (falls back gracefully for Latin too)
+  try {
+    const fontRes = await fetch("/fonts/NotoSansLao.ttf");
+    const fontBuf = await fontRes.arrayBuffer();
+    const bytes = new Uint8Array(fontBuf);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 8192) {
+      binary += String.fromCharCode(...bytes.slice(i, i + 8192));
+    }
+    const b64 = btoa(binary);
+    doc.addFileToVFS("NotoSansLao.ttf", b64);
+    doc.addFont("NotoSansLao.ttf", "NotoSansLao", "normal");
+    doc.addFont("NotoSansLao.ttf", "NotoSansLao", "bold");
+  } catch {
+    // If font load fails, jsPDF falls back to helvetica (Lao will be boxes but won't crash)
+  }
   const PAGE_W = 148;
   const ML = 8;
   const MR = 8;
@@ -110,10 +127,10 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
   doc.rect(0, 0, PAGE_W, 28, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
+  doc.setFont("NotoSansLao", "bold");
   doc.text(contact.name, ML, 14);
   doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
+  doc.setFont("NotoSansLao", "normal");
   doc.text("AR / AP Statement   |   " + fd(now), ML, 22);
   doc.setTextColor(30, 41, 59);
   y = 34;
@@ -126,7 +143,7 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
     if (isAR) doc.setFillColor(220, 252, 231); else doc.setFillColor(254, 226, 226);
     doc.rect(ML, y, CW, 8, "F");
     doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
+    doc.setFont("NotoSansLao", "bold");
     if (isAR) doc.setTextColor(21, 128, 61); else doc.setTextColor(185, 28, 28);
     doc.text(
       isAR ? "Receivables (AR)  -  " + contact.name + " owes you"
@@ -138,7 +155,7 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
 
     if (items.length === 0) {
       doc.setFontSize(8);
-      doc.setFont("helvetica", "normal");
+      doc.setFont("NotoSansLao", "normal");
       doc.setTextColor(148, 163, 184);
       doc.text("No records.", ML + 2, y + 4);
       doc.setTextColor(30, 41, 59);
@@ -192,7 +209,7 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
       else                                 doc.setFillColor(254, 226, 226);
       doc.roundedRect(ML + CW - 19, cy, 17, 5.5, 1.5, 1.5, "F");
       doc.setFontSize(6.5);
-      doc.setFont("helvetica", "bold");
+      doc.setFont("NotoSansLao", "bold");
       if (item.status === "settled")       doc.setTextColor(21, 128, 61);
       else if (item.status === "partial")  doc.setTextColor(154, 52, 18);
       else                                 doc.setTextColor(185, 28, 28);
@@ -200,14 +217,14 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
 
       // Description (bold)
       doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
+      doc.setFont("NotoSansLao", "bold");
       doc.setTextColor(30, 41, 59);
       doc.text(descLines, ML + 5, cy + 4);
       cy += descLines.length * DESC_LH;
 
       // Agreed / due date line
       doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
+      doc.setFont("NotoSansLao", "normal");
       doc.setTextColor(51, 65, 85);
       doc.text("Agreed: " + fd(item.agreementDate) + "   |   " + dueLine, ML + 5, cy + 3.5);
       cy += DATE_H;
@@ -225,7 +242,7 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
 
       // Row 1: CCY code + column labels inline (4mm)
       doc.setFontSize(7);
-      doc.setFont("helvetica", "normal");
+      doc.setFont("NotoSansLao", "normal");
       doc.setTextColor(148, 163, 184);
       doc.text(item.currency.code + "  Original", COL1, cy + 3.5);
       doc.text(isAR ? "Received" : "Paid", COL2, cy + 3.5);
@@ -235,13 +252,13 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
       // Row 2: values — Original + Paid in grey, Remaining in highlight box (5.5mm)
       const ccy = item.currency.code;
       doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
+      doc.setFont("NotoSansLao", "normal");
       doc.setTextColor(100, 116, 139);
       doc.text(num(item.originalAmount) + " " + ccy, COL1, cy + 4.5);
       doc.text(num(item.paidAmount) + " " + ccy, COL2, cy + 4.5);
 
       // Measure remaining text at bold 10pt before drawing box
-      doc.setFont("helvetica", "bold");
+      doc.setFont("NotoSansLao", "bold");
       doc.setFontSize(10);
       const remText = num(item.remainingAmount) + " " + ccy;
       const remW = doc.getTextWidth(remText);
@@ -263,11 +280,11 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
       // Payment sub-rows
       for (const p of item.payments) {
         doc.setFontSize(7.5);
-        doc.setFont("helvetica", "normal");
+        doc.setFont("NotoSansLao", "normal");
         doc.setTextColor(100, 116, 139);
         const note = p.note ? "  " + p.note.substring(0, 28) : "";
         doc.text("  Payment  " + fd(p.date) + note, ML + 5, cy + 3.2);
-        doc.setFont("helvetica", "bold");
+        doc.setFont("NotoSansLao", "bold");
         doc.setFontSize(8);
         if (isAR) doc.setTextColor(21, 128, 61); else doc.setTextColor(37, 99, 235);
         doc.text(num(p.amount) + " " + p.currency.code, ML + CW - 2, cy + 3.2, { align: "right" });
@@ -289,7 +306,7 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
       doc.setFillColor(241, 245, 249);
       doc.rect(ML, y, CW, 9, "F");
       doc.setFontSize(8);
-      doc.setFont("helvetica", "bold");
+      doc.setFont("NotoSansLao", "bold");
       doc.setTextColor(71, 85, 105);
       doc.text(
         code + "   Original: " + num(t.orig) + "   " + (isAR ? "Received" : "Paid") + ": " + num(t.paid),
@@ -311,7 +328,7 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) 
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
     doc.setFontSize(7);
-    doc.setFont("helvetica", "normal");
+    doc.setFont("NotoSansLao", "normal");
     doc.setTextColor(148, 163, 184);
     doc.text("Catdy's AR AP Tracker  |  Confidential", ML, FOOTER_Y);
     doc.text(i + " / " + pages, PAGE_W - MR, FOOTER_Y, { align: "right" });
