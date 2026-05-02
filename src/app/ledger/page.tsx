@@ -84,54 +84,32 @@ function toBlobUrl(rawUrl: string): { blobUrl: string; isImage: boolean } | null
   return { blobUrl: rawUrl, isImage };
 }
 
-async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], lang: "en" | "lo" = "en") {
-  const { default: jsPDF } = await import("jspdf");
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
-
-  // Embed static Noto Sans Lao (Lao + Latin merged, separate Regular/Bold)
-  const toB64 = (buf: ArrayBuffer) => {
-    const bytes = new Uint8Array(buf);
-    let s = "";
-    for (let i = 0; i < bytes.length; i += 8192)
-      s += String.fromCharCode(...bytes.slice(i, i + 8192));
-    return btoa(s);
-  };
-  try {
-    const [regBuf, boldBuf] = await Promise.all([
-      fetch("/fonts/NotoSansLao-Regular.ttf").then(r => r.arrayBuffer()),
-      fetch("/fonts/NotoSansLao-Bold.ttf").then(r => r.arrayBuffer()),
-    ]);
-    doc.addFileToVFS("NotoSansLao-Regular.ttf", toB64(regBuf));
-    doc.addFont("NotoSansLao-Regular.ttf", "NotoSansLao", "normal");
-    doc.addFileToVFS("NotoSansLao-Bold.ttf", toB64(boldBuf));
-    doc.addFont("NotoSansLao-Bold.ttf", "NotoSansLao", "bold");
-  } catch { /* falls back to helvetica */ }
-
+function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: "en" | "lo"): string {
   const T = lang === "lo" ? {
     statement:  "ລາຍງານ AR / AP",
-    ar_title:   (n: string) => `AR (ລູກໜີ້)  —  ${n} ຕິດໜີ້ທ່ານ`,
-    ap_title:   (n: string) => `AP (ເຈົ້ານີ້)  —  ທ່ານຕິດໜີ້ ${n}`,
+    ar_title:   (n: string) => `AR (ລູກໜີ້) — ${n} ຕິດໜີ້ທ່ານ`,
+    ap_title:   (n: string) => `AP (ເຈົ້າໜີ້) — ທ່ານຕິດໜີ້ ${n}`,
     no_records: "ບໍ່ມີຂໍ້ມູນ.",
     col_desc:   "ລາຍການ",
     col_agreed: "ວັນທີ",
     col_status: "ສະຖານະ",
-    col_orig:   "ຈໍານວນ",
+    col_orig:   "ຈຳນວນ",
     col_paid:   "ຈ່າຍແລ້ວ",
     col_recv:   "ຮັບແລ້ວ",
     col_rem:    "ຍັງຄ້າງ",
     s_open:     "ຄ້າງ",
     s_partial:  "ບາງສ່ວນ",
-    s_settled:  "ສໍາເລັດ",
-    due:        "ກໍານົດ:",
-    overdue:    "ເກີນກໍານົດ",
-    payment:    "ຊໍາລະ",
+    s_settled:  "ສຳເລັດ",
+    due:        "ກຳນົດ:",
+    overdue:    "ເກີນກຳນົດ",
+    payment:    "ຊຳລະ",
     total:      "ລວມ",
     no_desc:    "(ບໍ່ມີລາຍລະອຽດ)",
-    footer:     "Catdy's AR AP Tracker  |  ເອກະສານລັບ",
+    footer:     "Catdy's AR AP Tracker — ເອກະສານລັບ",
   } : {
     statement:  "AR / AP Statement",
-    ar_title:   (n: string) => `Receivables (AR)  —  ${n} owes you`,
-    ap_title:   (n: string) => `Payables (AP)  —  You owe ${n}`,
+    ar_title:   (n: string) => `Receivables (AR) — ${n} owes you`,
+    ap_title:   (n: string) => `Payables (AP) — You owe ${n}`,
     no_records: "No records.",
     col_desc:   "Description",
     col_agreed: "Agreed",
@@ -148,182 +126,58 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
     payment:    "Payment",
     total:      "TOTAL",
     no_desc:    "(No description)",
-    footer:     "Catdy's AR AP Tracker  |  Confidential",
+    footer:     "Catdy's AR AP Tracker — Confidential",
   };
-
-  const PAGE_W = 148, ML = 8, MR = 8, CW = PAGE_W - ML - MR;
-  const FOOTER_Y = 204, MAX_Y = FOOTER_Y - 6;
-  const F = "NotoSansLao";
-
-  // Column layout (132mm total): Desc 42 | Agreed 22 | Status 18 | Orig 16 | Paid 16 | Rem 18
-  const C_DESC    = ML + 1;         // left-align
-  const C_DATE    = ML + 43;        // left-align
-  const C_STATUS  = ML + 65;        // left-align
-  const C_ORIG_R  = ML + 98 - 1;    // right-align (col ends at ML+98)
-  const C_PAID_R  = ML + 114 - 1;   // right-align (col ends at ML+114)
-  const C_REM_R   = ML + CW - 1;    // right-align
 
   const num = (v: number) => Math.round(v).toLocaleString("en-US");
   const fd  = (d: string | Date) =>
-    (typeof d === "string" ? new Date(d) : d).toLocaleDateString("en-GB", {
-      day: "2-digit", month: "short", year: "numeric",
-    });
+    (typeof d === "string" ? new Date(d) : d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const esc = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const now = new Date();
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
 
-  let y = 0;
-  const checkY = (h: number) => { if (y + h > MAX_Y) { doc.addPage(); y = 14; } };
-
-  // ── Page 1 header ──
-  doc.setFillColor(30, 41, 59);
-  doc.rect(0, 0, PAGE_W, 26, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(15);
-  doc.setFont(F, "bold");
-  doc.text(contact.name, ML, 13);
-  doc.setFontSize(8);
-  doc.setFont(F, "normal");
-  doc.setTextColor(148, 163, 184);
-  doc.text(T.statement + "  |  " + fd(now), ML, 21);
-  doc.setTextColor(30, 41, 59);
-  y = 32;
-
-  // ── Column header row (reused after page breaks) ──
-  const drawColHeaders = (isAR: boolean) => {
-    const H = 7;
-    doc.setFillColor(241, 245, 249);
-    doc.rect(ML, y, CW, H, "F");
-    doc.setDrawColor(203, 213, 225);
-    doc.setLineWidth(0.3);
-    doc.line(ML, y + H, ML + CW, y + H);
-    doc.setLineWidth(0.15);
-    for (const sx of [ML + 42, ML + 64, ML + 82, ML + 98, ML + 114])
-      doc.line(sx, y + 1, sx, y + H - 1);
-    doc.setFontSize(6.5);
-    doc.setFont(F, "bold");
-    doc.setTextColor(100, 116, 139);
-    doc.text(T.col_desc,   C_DESC,   y + 4.8);
-    doc.text(T.col_agreed, C_DATE,   y + 4.8);
-    doc.text(T.col_status, C_STATUS, y + 4.8);
-    doc.text(T.col_orig,   C_ORIG_R, y + 4.8, { align: "right" });
-    doc.text(isAR ? T.col_recv : T.col_paid, C_PAID_R, y + 4.8, { align: "right" });
-    doc.text(T.col_rem,    C_REM_R,  y + 4.8, { align: "right" });
-    y += H;
-  };
-
-  const drawSection = (items: ARItem[], type: "ar" | "ap") => {
-    const isAR = type === "ar";
-
-    // Section title + rule
-    checkY(18);
-    doc.setFontSize(9);
-    doc.setFont(F, "bold");
-    doc.setTextColor(30, 41, 59);
-    doc.text(isAR ? T.ar_title(contact.name) : T.ap_title(contact.name), ML, y + 5.5);
-    doc.setDrawColor(30, 41, 59);
-    doc.setLineWidth(0.4);
-    doc.line(ML, y + 7.5, ML + CW, y + 7.5);
-    y += 11;
-
-    if (items.length === 0) {
-      checkY(9);
-      doc.setFontSize(7.5);
-      doc.setFont(F, "normal");
-      doc.setTextColor(148, 163, 184);
-      doc.text(T.no_records, C_DESC, y + 5);
-      y += 9;
-      return;
-    }
-
-    drawColHeaders(isAR);
+  const sectionHTML = (items: ARItem[], isAR: boolean): string => {
+    const title = isAR ? T.ar_title(contact.name) : T.ap_title(contact.name);
+    if (items.length === 0) return `
+      <h2 class="sec-title">${esc(title)}</h2>
+      <p class="empty">${T.no_records}</p>`;
 
     const totals: Record<string, { orig: number; paid: number; rem: number }> = {};
+    let rows = "";
 
     for (const item of items) {
-      const overdue  = !!(item.dueDate && new Date(item.dueDate) < now && item.status !== "settled");
-      const ccy      = item.currency.code;
-      const desc     = item.description || T.no_desc;
-      const descLines = (doc.splitTextToSize(desc, 40) as string[]).slice(0, 2);
-      const hasDue   = !!item.dueDate;
-      const lineCount = Math.max(descLines.length, hasDue ? 2 : 1);
-      const rowH     = 3 + lineCount * 4.5 + 2;
-      const totalH   = rowH + item.payments.length * 5;
+      const overdue = !!(item.dueDate && new Date(item.dueDate) < now && item.status !== "settled");
+      const ccy     = item.currency.code;
+      const desc    = item.description || T.no_desc;
+      const sLabel  = overdue && item.status !== "settled" ? T.overdue
+                    : item.status === "settled" ? T.s_settled
+                    : item.status === "partial"  ? T.s_partial : T.s_open;
+      const sCls    = item.status === "settled" ? "settled" : item.status === "partial" ? "partial" : overdue ? "overdue" : "open";
+      const rCls    = item.status === "settled" ? "rem-ok" : overdue ? "rem-bad" : isAR ? "rem-ar" : "rem-ap";
+      const dueHtml = item.dueDate
+        ? `<br><small class="${overdue ? "due-late" : "due-ok"}">${T.due} ${fd(item.dueDate)}${overdue ? " !" : ""}</small>`
+        : "";
 
-      const prevY = y;
-      checkY(totalH + 1);
-      if (y !== prevY) drawColHeaders(isAR); // page break — reprint headers
-
-      const rowY = y;
-
-      // Description (bold, wraps up to 2 lines)
-      doc.setFontSize(8);
-      doc.setFont(F, "bold");
-      doc.setTextColor(30, 41, 59);
-      doc.text(descLines, C_DESC, rowY + 4.5);
-
-      // Agreed date
-      doc.setFont(F, "normal");
-      doc.setFontSize(7.5);
-      doc.setTextColor(71, 85, 105);
-      doc.text(fd(item.agreementDate), C_DATE, rowY + 4.5);
-
-      // Due date (2nd line, smaller)
-      if (item.dueDate) {
-        doc.setFontSize(6.5);
-        doc.setTextColor(overdue ? 220 : 148, overdue ? 38 : 163, overdue ? 38 : 184);
-        doc.text(T.due + " " + fd(item.dueDate) + (overdue ? " !" : ""), C_DATE, rowY + 9);
-      }
-
-      // Status
-      doc.setFontSize(7.5);
-      doc.setFont(F, "bold");
-      const statusLabel = overdue && item.status !== "settled" ? T.overdue
-                        : item.status === "settled" ? T.s_settled
-                        : item.status === "partial"  ? T.s_partial : T.s_open;
-      if (item.status === "settled")      doc.setTextColor(21, 128, 61);
-      else if (item.status === "partial") doc.setTextColor(154, 52, 18);
-      else if (overdue)                   doc.setTextColor(220, 38, 38);
-      else                                doc.setTextColor(100, 116, 139);
-      doc.text(statusLabel, C_STATUS, rowY + 4.5);
-
-      // Original (grey)
-      doc.setFont(F, "normal");
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      doc.text(num(item.originalAmount), C_ORIG_R, rowY + 4.5, { align: "right" });
-
-      // Paid (grey)
-      doc.text(num(item.paidAmount), C_PAID_R, rowY + 4.5, { align: "right" });
-
-      // Remaining (bold, coloured)
-      doc.setFont(F, "bold");
-      doc.setFontSize(8.5);
-      if (item.status === "settled")  doc.setTextColor(21, 128, 61);
-      else if (overdue)               doc.setTextColor(220, 38, 38);
-      else if (!isAR)                 doc.setTextColor(185, 28, 28);
-      else                            doc.setTextColor(37, 99, 235);
-      doc.text(num(item.remainingAmount) + " " + ccy, C_REM_R, rowY + 4.5, { align: "right" });
-
-      y += rowH;
-
-      // Payment sub-rows
+      rows += `<tbody class="record">
+        <tr>
+          <td class="desc">${esc(desc)}</td>
+          <td>${fd(item.agreementDate)}${dueHtml}</td>
+          <td class="status ${sCls}">${sLabel}</td>
+          <td class="num muted">${num(item.originalAmount)}</td>
+          <td class="num muted">${num(item.paidAmount)}</td>
+          <td class="num ${rCls}">${num(item.remainingAmount)} ${ccy}</td>
+        </tr>`;
       for (const p of item.payments) {
-        const pY = y;
-        doc.setFontSize(6.5);
-        doc.setFont(F, "normal");
-        doc.setTextColor(148, 163, 184);
-        const noteStr = p.note ? "  " + p.note.substring(0, 22) : "";
-        doc.text("  └ " + T.payment + "  " + fd(p.date) + noteStr, C_DESC, pY + 3.5);
-        doc.setFont(F, "bold");
-        doc.setFontSize(7);
-        if (isAR) doc.setTextColor(21, 128, 61); else doc.setTextColor(37, 99, 235);
-        doc.text(num(p.amount) + " " + p.currency.code, C_PAID_R, pY + 3.5, { align: "right" });
-        y += 5;
+        const note = p.note ? "  " + p.note.substring(0, 28) : "";
+        const pCls = isAR ? "pamt-ar" : "pamt-ap";
+        rows += `<tr class="pay-row">
+          <td colspan="3" class="pay-desc">└ ${T.payment}  ${fd(p.date)}${esc(note)}</td>
+          <td></td>
+          <td class="num ${pCls}">${num(p.amount)} ${p.currency.code}</td>
+          <td></td>
+        </tr>`;
       }
-
-      // Row divider
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.2);
-      doc.line(ML, y, ML + CW, y);
+      rows += `</tbody>`;
 
       if (!totals[ccy]) totals[ccy] = { orig: 0, paid: 0, rem: 0 };
       totals[ccy].orig += item.originalAmount;
@@ -331,45 +185,88 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
       totals[ccy].rem  += item.remainingAmount;
     }
 
-    // Totals row(s) per currency
-    y += 2;
-    for (const [code, t] of Object.entries(totals)) {
-      checkY(8);
-      doc.setFillColor(241, 245, 249);
-      doc.rect(ML, y, CW, 7, "F");
-      doc.setFontSize(7.5);
-      doc.setFont(F, "bold");
-      doc.setTextColor(30, 41, 59);
-      doc.text(T.total + " (" + code + ")", C_DESC, y + 5);
-      doc.setFont(F, "normal");
-      doc.setTextColor(100, 116, 139);
-      doc.text(num(t.orig), C_ORIG_R, y + 5, { align: "right" });
-      doc.text(num(t.paid), C_PAID_R, y + 5, { align: "right" });
-      doc.setFont(F, "bold");
-      if (isAR) doc.setTextColor(37, 99, 235); else doc.setTextColor(185, 28, 28);
-      doc.text(num(t.rem) + " " + code, C_REM_R, y + 5, { align: "right" });
-      y += 8;
-    }
-    y += 6;
+    const totRow = Object.entries(totals).map(([code, t]) => `
+      <tr class="totals-row">
+        <td colspan="3"><strong>${T.total} (${code})</strong></td>
+        <td class="num muted">${num(t.orig)}</td>
+        <td class="num muted">${num(t.paid)}</td>
+        <td class="num ${isAR ? "rem-ar" : "rem-ap"}">${num(t.rem)} ${code}</td>
+      </tr>`).join("");
+
+    return `
+      <h2 class="sec-title">${esc(title)}</h2>
+      <table>
+        <thead><tr>
+          <th style="width:32%">${T.col_desc}</th>
+          <th style="width:15%">${T.col_agreed}</th>
+          <th style="width:12%">${T.col_status}</th>
+          <th class="num" style="width:13%">${T.col_orig}</th>
+          <th class="num" style="width:14%">${isAR ? T.col_recv : T.col_paid}</th>
+          <th class="num" style="width:14%">${T.col_rem}</th>
+        </tr></thead>
+        ${rows}
+        <tfoot>${totRow}</tfoot>
+      </table>`;
   };
 
-  drawSection(ar, "ar");
-  checkY(18);
-  drawSection(ap, "ap");
-
-  // Footer on every page
-  const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) {
-    doc.setPage(i);
-    doc.setFontSize(6.5);
-    doc.setFont(F, "normal");
-    doc.setTextColor(148, 163, 184);
-    doc.text(T.footer, ML, FOOTER_Y);
-    doc.text(i + " / " + pages, PAGE_W - MR, FOOTER_Y, { align: "right" });
-  }
-
-  doc.save(contact.name + " - AR AP Statement.pdf");
+  return `<!DOCTYPE html><html lang="${lang}"><head>
+  <meta charset="utf-8">
+  <title>${esc(contact.name)} — AR AP Statement</title>
+  <style>
+    @font-face { font-family:'NSL'; src:url('${origin}/fonts/NotoSansLao-Regular.ttf') format('truetype'); font-weight:400; }
+    @font-face { font-family:'NSL'; src:url('${origin}/fonts/NotoSansLao-Bold.ttf')    format('truetype'); font-weight:700; }
+    @page { size:A4; margin:14mm 12mm 16mm; }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'NSL',sans-serif;font-size:9pt;color:#1e293b;background:#fff}
+    .hdr{background:#1e293b;color:#fff;padding:10mm 12mm;margin:-14mm -12mm 8mm}
+    .hdr h1{font-size:17pt;font-weight:700;margin-bottom:2mm}
+    .hdr p{font-size:8.5pt;color:#94a3b8}
+    .sec-title{font-size:10pt;font-weight:700;margin:7mm 0 2mm;padding-bottom:2mm;border-bottom:0.5pt solid #1e293b}
+    .empty{color:#94a3b8;font-size:8.5pt;padding:3mm 0}
+    table{width:100%;border-collapse:collapse;margin-bottom:3mm;font-size:8.5pt}
+    thead tr{background:#f1f5f9}
+    th{font-size:7.5pt;font-weight:700;color:#64748b;padding:2mm 1.5mm;border-bottom:0.5pt solid #cbd5e1;border-right:0.2pt solid #e2e8f0;text-align:left}
+    th:last-child,td:last-child{border-right:none}
+    th.num,td.num{text-align:right}
+    td{padding:1.8mm 1.5mm;border-bottom:0.2pt solid #e2e8f0;vertical-align:top}
+    tbody.record{page-break-inside:avoid}
+    .desc{font-weight:700;color:#1e293b}
+    .muted{color:#64748b}
+    .status{font-weight:700;font-size:8pt}
+    .open{color:#64748b}.partial{color:#9a3412}.settled{color:#15803d}.overdue{color:#dc2626}
+    .rem-ar{font-weight:700;color:#2563eb;text-align:right}
+    .rem-ap{font-weight:700;color:#b91c1c;text-align:right}
+    .rem-ok{font-weight:700;color:#15803d;text-align:right}
+    .rem-bad{font-weight:700;color:#dc2626;text-align:right}
+    .pay-row td{font-size:7.5pt;color:#94a3b8;background:#fafafa}
+    .pay-desc{padding-left:5mm}
+    .pamt-ar{font-weight:700;color:#15803d}.pamt-ap{font-weight:700;color:#2563eb}
+    .due-ok{color:#94a3b8}.due-late{color:#dc2626}
+    tfoot .totals-row td{background:#f1f5f9;font-size:8.5pt;padding:2mm 1.5mm;border-top:0.5pt solid #cbd5e1}
+    .footer{font-size:7pt;color:#94a3b8;display:flex;justify-content:space-between;margin-top:6mm;padding-top:2mm;border-top:0.2pt solid #e2e8f0}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style>
+</head><body>
+  <div class="hdr">
+    <h1>${esc(contact.name)}</h1>
+    <p>${T.statement}  |  ${fd(now)}</p>
+  </div>
+  ${sectionHTML(ar, true)}
+  ${sectionHTML(ap, false)}
+  <div class="footer"><span>${T.footer}</span></div>
+  <script>window.onload=()=>{window.print()}<\/script>
+</body></html>`;
 }
+
+function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], lang: "en" | "lo" = "en") {
+  const html = buildStatementHTML(contact, ar, ap, lang);
+  const win = window.open("", "_blank");
+  if (!win) { alert("Please allow popups to export PDF."); return; }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
+
 
 function totalsFor(items: ARItem[]) {
   return items.reduce((acc, r) => {
