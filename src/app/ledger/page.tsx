@@ -257,35 +257,39 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
     import("html2canvas"),
   ]);
 
-  // Build body HTML (no <html>/<head> — just styled content for the hidden div)
-  const bodyHTML = buildStatementHTML(contact, ar, ap, lang);
-
-  // Mount hidden A4-width container so browser renders + shapes Lao text
   const origin = window.location.origin;
-  const container = document.createElement("div");
-  container.style.cssText = [
-    "position:fixed", "top:-99999px", "left:-99999px",
-    "width:794px",       // A4 at 96dpi
-    "background:#fff",
-    "font-family:'NSL',sans-serif",
-  ].join(";");
 
-  // Inject font-face + content
-  container.innerHTML = `
-    <style>
+  // @font-face MUST live in document.head — browsers ignore <style> inside div innerHTML
+  const FONT_ID = "nsl-pdf-fonts";
+  if (!document.getElementById(FONT_ID)) {
+    const s = document.createElement("style");
+    s.id = FONT_ID;
+    s.textContent = `
       @font-face{font-family:'NSL';src:url('${origin}/fonts/NotoSansLao-Regular.ttf') format('truetype');font-weight:400}
-      @font-face{font-family:'NSL';src:url('${origin}/fonts/NotoSansLao-Bold.ttf')    format('truetype');font-weight:700}
-    </style>
-    ${bodyHTML}`;
+      @font-face{font-family:'NSL';src:url('${origin}/fonts/NotoSansLao-Bold.ttf')    format('truetype');font-weight:700}`;
+    document.head.appendChild(s);
+  }
+
+  // Force-load both weights before rendering
+  await Promise.allSettled([
+    document.fonts.load("400 14px NSL"),
+    document.fonts.load("700 14px NSL"),
+  ]);
+
+  // Mount off-screen container (position:absolute — html2canvas handles it reliably)
+  const container = document.createElement("div");
+  container.style.cssText = "position:absolute;left:-9999px;top:0;width:794px;background:#fff";
+  container.innerHTML = buildStatementHTML(contact, ar, ap, lang);
   document.body.appendChild(container);
 
-  // Wait for font to finish loading before capturing
-  await document.fonts.ready;
+  // Small tick so layout reflows before capture
+  await new Promise(r => setTimeout(r, 80));
 
   try {
     const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,
+      allowTaint: false,
       backgroundColor: "#ffffff",
       logging: false,
     });
@@ -299,21 +303,20 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
       if (page > 0) doc.addPage();
       const srcY = page * pageHeightPx;
       const srcH = Math.min(pageHeightPx, canvas.height - srcY);
-
-      // Crop one page worth of canvas into a temp canvas
-      const pageCanvas = document.createElement("canvas");
-      pageCanvas.width  = canvas.width;
-      pageCanvas.height = pageHeightPx;
-      const ctx = pageCanvas.getContext("2d")!;
+      const pageCanvas       = document.createElement("canvas");
+      pageCanvas.width       = canvas.width;
+      pageCanvas.height      = pageHeightPx;
+      const ctx              = pageCanvas.getContext("2d")!;
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
       ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
-
-      const imgData = pageCanvas.toDataURL("image/jpeg", 0.92);
-      doc.addImage(imgData, "JPEG", 0, 0, A4_W, A4_H);
+      doc.addImage(pageCanvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, A4_W, A4_H);
     }
 
     doc.save(`${contact.name} - AR AP Statement.pdf`);
+  } catch (err) {
+    console.error("PDF export error:", err);
+    alert("PDF export failed — please try again.");
   } finally {
     document.body.removeChild(container);
   }
