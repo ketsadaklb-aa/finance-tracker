@@ -206,7 +206,7 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
           <th class="num" style="width:14%">${T.col_rem}</th>
         </tr></thead>
         ${rows}
-        <tfoot>${totRow}</tfoot>
+        <tfoot><tr class="tfoot-gap"><td colspan="6"></td></tr>${totRow}</tfoot>
       </table>`;
   };
 
@@ -243,7 +243,7 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     .pay-desc{padding-left:12px}
     .pamt-ar{font-weight:700;color:#15803d}.pamt-ap{font-weight:700;color:#2563eb}
     .due-ok{color:#94a3b8;font-size:9px}.due-late{color:#dc2626;font-size:9px}
-    tbody:last-of-type tr:last-child td{border-bottom:2px solid #94a3b8}
+    .tfoot-gap td{height:8px;background:#fff;border:none;padding:0}
     tfoot .totals-row td{background:#e8edf4;font-size:10.5px;font-weight:700;padding:6px 3px;border-top:2.5px solid #1e293b;border-bottom:1.5px solid #94a3b8}
     .footer{font-size:9px;color:#94a3b8;display:flex;justify-content:space-between;margin-top:12px;padding-top:4px;border-top:1px solid #e2e8f0}
   </style>
