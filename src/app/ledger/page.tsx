@@ -88,8 +88,8 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
   const T = lang === "lo" ? {
     statement:  "ລາຍງານ AR / AP",
     date_label: "ວັນທີ",
-    ar_title:   (n: string) => `AR (ລູກໜີ້) — ${n} ຕິດໜີ້ທ່ານ`,
-    ap_title:   (n: string) => `AP (ເຈົ້າໜີ້) — ທ່ານຕິດໜີ້ ${n}`,
+    ar_title:   (n: string) => `AR (ຄ້າງຮັບ) — ${n} ຄ້າງຊຳລະທ່ານ`,
+    ap_title:   (n: string) => `AP (ຄ້າງຈ່າຍ) — ໜີ້ຕ້ອງສົ່ງ ${n}`,
     no_records: "ບໍ່ມີຂໍ້ມູນ.",
     col_desc:   "ລາຍການ",
     col_agreed: "ວັນທີ",
