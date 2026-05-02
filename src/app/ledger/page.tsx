@@ -134,7 +134,6 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     (typeof d === "string" ? new Date(d) : d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const esc = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const now = new Date();
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   const sectionHTML = (items: ARItem[], isAR: boolean): string => {
     const title = isAR ? T.ar_title(contact.name) : T.ap_title(contact.name);
@@ -209,62 +208,115 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
       </table>`;
   };
 
-  return `<!DOCTYPE html><html lang="${lang}"><head>
-  <meta charset="utf-8">
-  <title>${esc(contact.name)} — AR AP Statement</title>
+  // Returns styled body HTML (no <html>/<head>) — rendered into a hidden div by downloadContactPDF
+  return `
   <style>
-    @font-face { font-family:'NSL'; src:url('${origin}/fonts/NotoSansLao-Regular.ttf') format('truetype'); font-weight:400; }
-    @font-face { font-family:'NSL'; src:url('${origin}/fonts/NotoSansLao-Bold.ttf')    format('truetype'); font-weight:700; }
-    @page { size:A4; margin:14mm 12mm 16mm; }
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'NSL',sans-serif;font-size:9pt;color:#1e293b;background:#fff}
-    .hdr{background:#1e293b;color:#fff;padding:10mm 12mm;margin:-14mm -12mm 8mm}
-    .hdr h1{font-size:17pt;font-weight:700;margin-bottom:2mm}
-    .hdr p{font-size:8.5pt;color:#94a3b8}
-    .sec-title{font-size:10pt;font-weight:700;margin:7mm 0 2mm;padding-bottom:2mm;border-bottom:0.5pt solid #1e293b}
-    .empty{color:#94a3b8;font-size:8.5pt;padding:3mm 0}
-    table{width:100%;border-collapse:collapse;margin-bottom:3mm;font-size:8.5pt}
+    div,p,h1,h2,table,thead,tbody,tfoot,tr,th,td,small{font-family:'NSL',sans-serif}
+    .wrap{padding:20px 24px;background:#fff;color:#1e293b;font-size:11px;line-height:1.45}
+    .hdr{background:#1e293b;color:#fff;padding:18px 24px;margin:-20px -24px 16px}
+    .hdr h1{font-size:20px;font-weight:700;margin-bottom:4px}
+    .hdr p{font-size:10px;color:#94a3b8}
+    .sec-title{font-size:12px;font-weight:700;margin:14px 0 4px;padding-bottom:4px;border-bottom:1px solid #1e293b}
+    .empty{color:#94a3b8;font-size:10px;padding:6px 0}
+    table{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:10px}
     thead tr{background:#f1f5f9}
-    th{font-size:7.5pt;font-weight:700;color:#64748b;padding:2mm 1.5mm;border-bottom:0.5pt solid #cbd5e1;border-right:0.2pt solid #e2e8f0;text-align:left}
+    th{font-size:9px;font-weight:700;color:#64748b;padding:4px 3px;border-bottom:1px solid #cbd5e1;border-right:1px solid #e2e8f0;text-align:left}
     th:last-child,td:last-child{border-right:none}
     th.num,td.num{text-align:right}
-    td{padding:1.8mm 1.5mm;border-bottom:0.2pt solid #e2e8f0;vertical-align:top}
-    tbody.record{page-break-inside:avoid}
+    td{padding:3.5px 3px;border-bottom:1px solid #e2e8f0;vertical-align:top}
     .desc{font-weight:700;color:#1e293b}
     .muted{color:#64748b}
-    .status{font-weight:700;font-size:8pt}
+    .status{font-weight:700}
     .open{color:#64748b}.partial{color:#9a3412}.settled{color:#15803d}.overdue{color:#dc2626}
     .rem-ar{font-weight:700;color:#2563eb;text-align:right}
     .rem-ap{font-weight:700;color:#b91c1c;text-align:right}
     .rem-ok{font-weight:700;color:#15803d;text-align:right}
     .rem-bad{font-weight:700;color:#dc2626;text-align:right}
-    .pay-row td{font-size:7.5pt;color:#94a3b8;background:#fafafa}
-    .pay-desc{padding-left:5mm}
+    .pay-row td{font-size:9px;color:#94a3b8;background:#fafafa}
+    .pay-desc{padding-left:12px}
     .pamt-ar{font-weight:700;color:#15803d}.pamt-ap{font-weight:700;color:#2563eb}
-    .due-ok{color:#94a3b8}.due-late{color:#dc2626}
-    tfoot .totals-row td{background:#f1f5f9;font-size:8.5pt;padding:2mm 1.5mm;border-top:0.5pt solid #cbd5e1}
-    .footer{font-size:7pt;color:#94a3b8;display:flex;justify-content:space-between;margin-top:6mm;padding-top:2mm;border-top:0.2pt solid #e2e8f0}
-    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    .due-ok{color:#94a3b8;font-size:9px}.due-late{color:#dc2626;font-size:9px}
+    tfoot .totals-row td{background:#f1f5f9;font-size:10px;padding:4px 3px;border-top:1px solid #cbd5e1}
+    .footer{font-size:9px;color:#94a3b8;display:flex;justify-content:space-between;margin-top:12px;padding-top:4px;border-top:1px solid #e2e8f0}
   </style>
-</head><body>
-  <div class="hdr">
-    <h1>${esc(contact.name)}</h1>
-    <p>${T.statement}  |  ${fd(now)}</p>
-  </div>
-  ${sectionHTML(ar, true)}
-  ${sectionHTML(ap, false)}
-  <div class="footer"><span>${T.footer}</span></div>
-  <script>window.onload=()=>{window.print()}<\/script>
-</body></html>`;
+  <div class="wrap">
+    <div class="hdr">
+      <h1>${esc(contact.name)}</h1>
+      <p>${T.statement}  |  ${fd(now)}</p>
+    </div>
+    ${sectionHTML(ar, true)}
+    ${sectionHTML(ap, false)}
+    <div class="footer"><span>${T.footer}</span></div>
+  </div>`;
 }
 
-function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], lang: "en" | "lo" = "en") {
-  const html = buildStatementHTML(contact, ar, ap, lang);
-  const win = window.open("", "_blank");
-  if (!win) { alert("Please allow popups to export PDF."); return; }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
+async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], lang: "en" | "lo" = "en") {
+  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+    import("jspdf"),
+    import("html2canvas"),
+  ]);
+
+  // Build body HTML (no <html>/<head> — just styled content for the hidden div)
+  const bodyHTML = buildStatementHTML(contact, ar, ap, lang);
+
+  // Mount hidden A4-width container so browser renders + shapes Lao text
+  const origin = window.location.origin;
+  const container = document.createElement("div");
+  container.style.cssText = [
+    "position:fixed", "top:-99999px", "left:-99999px",
+    "width:794px",       // A4 at 96dpi
+    "background:#fff",
+    "font-family:'NSL',sans-serif",
+  ].join(";");
+
+  // Inject font-face + content
+  container.innerHTML = `
+    <style>
+      @font-face{font-family:'NSL';src:url('${origin}/fonts/NotoSansLao-Regular.ttf') format('truetype');font-weight:400}
+      @font-face{font-family:'NSL';src:url('${origin}/fonts/NotoSansLao-Bold.ttf')    format('truetype');font-weight:700}
+    </style>
+    ${bodyHTML}`;
+  document.body.appendChild(container);
+
+  // Wait for font to finish loading before capturing
+  await document.fonts.ready;
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+    });
+
+    const A4_W = 210, A4_H = 297;
+    const doc  = new jsPDF({ format: "a4", unit: "mm", orientation: "portrait" });
+    const pageHeightPx = Math.round(canvas.width * (A4_H / A4_W));
+    const totalPages   = Math.ceil(canvas.height / pageHeightPx);
+
+    for (let page = 0; page < totalPages; page++) {
+      if (page > 0) doc.addPage();
+      const srcY = page * pageHeightPx;
+      const srcH = Math.min(pageHeightPx, canvas.height - srcY);
+
+      // Crop one page worth of canvas into a temp canvas
+      const pageCanvas = document.createElement("canvas");
+      pageCanvas.width  = canvas.width;
+      pageCanvas.height = pageHeightPx;
+      const ctx = pageCanvas.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+
+      const imgData = pageCanvas.toDataURL("image/jpeg", 0.92);
+      doc.addImage(imgData, "JPEG", 0, 0, A4_W, A4_H);
+    }
+
+    doc.save(`${contact.name} - AR AP Statement.pdf`);
+  } finally {
+    document.body.removeChild(container);
+  }
 }
 
 
