@@ -216,12 +216,13 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     *{margin:0;padding:0;box-sizing:border-box}
     div,p,h1,h2,table,thead,tbody,tfoot,tr,th,td,small{font-family:'NSL',sans-serif}
     .wrap{padding:20px 24px;background:#fff;color:#1e293b;font-size:11px;line-height:1.45}
-    .hdr{background:#1e293b;color:#fff;padding:18px 24px;margin:-20px -24px 16px;display:flex;justify-content:space-between;align-items:flex-start}
-    .hdr-left h1{font-size:20px;font-weight:700;margin-bottom:4px}
-    .hdr-left p{font-size:10px;color:#94a3b8}
-    .hdr-right{text-align:right;flex-shrink:0;padding-left:16px}
-    .hdr-right .date-label{font-size:9px;color:#94a3b8;margin-bottom:2px}
-    .hdr-right .date-value{font-size:17px;font-weight:700;color:#fff;white-space:nowrap}
+    .hdr{background:#1e293b;color:#fff;padding:14px 24px 16px;margin:-20px -24px 16px}
+    .hdr-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+    .stmt-lbl{font-size:9px;color:#94a3b8;letter-spacing:0.4px;text-transform:uppercase}
+    .hdr-date{display:flex;align-items:baseline;gap:5px}
+    .date-lbl{font-size:9px;color:#94a3b8}
+    .date-val{font-size:16px;font-weight:700;color:#fff;white-space:nowrap}
+    .hdr h1{font-size:22px;font-weight:700;line-height:1.2}
     .sec-title{font-size:12px;font-weight:700;margin:14px 0 4px;padding-bottom:4px;border-bottom:1px solid #1e293b}
     .empty{color:#94a3b8;font-size:10px;padding:6px 0}
     table{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:10px}
@@ -247,14 +248,14 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
   </style>
   <div class="wrap">
     <div class="hdr">
-      <div class="hdr-left">
-        <h1>${esc(contact.name)}</h1>
-        <p>${T.statement}</p>
+      <div class="hdr-top">
+        <span class="stmt-lbl">${T.statement}</span>
+        <div class="hdr-date">
+          <span class="date-lbl">${T.date_label}:</span>
+          <span class="date-val">${fd(now)}</span>
+        </div>
       </div>
-      <div class="hdr-right">
-        <div class="date-label">${T.date_label}</div>
-        <div class="date-value">${fd(now)}</div>
-      </div>
+      <h1>${esc(contact.name)}</h1>
     </div>
     ${sectionHTML(ar, true)}
     ${sectionHTML(ap, false)}
@@ -287,11 +288,14 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
     document.fonts.load("700 14px NSL"),
   ]);
 
-  // Mount off-screen container (position:absolute — html2canvas handles it reliably)
+  // Clip wrapper: 0×0 fixed so nothing is visible; inner div is what html2canvas renders
+  const clip = document.createElement("div");
+  clip.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;overflow:hidden;z-index:-9999";
   const container = document.createElement("div");
-  container.style.cssText = "position:absolute;left:-9999px;top:0;width:794px;background:#fff";
+  container.style.cssText = "position:absolute;left:0;top:0;width:794px;background:#fff";
   container.innerHTML = buildStatementHTML(contact, ar, ap, lang);
-  document.body.appendChild(container);
+  clip.appendChild(container);
+  document.body.appendChild(clip);
 
   // Small tick so layout reflows before capture
   await new Promise(r => setTimeout(r, 80));
@@ -329,7 +333,7 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
     console.error("PDF export error:", err);
     alert("PDF export failed — please try again.");
   } finally {
-    document.body.removeChild(container);
+    document.body.removeChild(clip);
   }
 }
 
