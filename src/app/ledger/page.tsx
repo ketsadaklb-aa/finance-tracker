@@ -88,41 +88,46 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
   const { default: jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
 
-  // Embed Noto Sans Lao (supports Lao + Latin)
-  try {
-    const fontRes = await fetch("/fonts/NotoSansLao.ttf");
-    const fontBuf = await fontRes.arrayBuffer();
-    const bytes = new Uint8Array(fontBuf);
-    let binary = "";
+  // Embed static Noto Sans Lao (Lao + Latin merged, separate Regular/Bold)
+  const toB64 = (buf: ArrayBuffer) => {
+    const bytes = new Uint8Array(buf);
+    let s = "";
     for (let i = 0; i < bytes.length; i += 8192)
-      binary += String.fromCharCode(...bytes.slice(i, i + 8192));
-    const b64 = btoa(binary);
-    doc.addFileToVFS("NotoSansLao.ttf", b64);
-    doc.addFont("NotoSansLao.ttf", "NotoSansLao", "normal");
-    doc.addFont("NotoSansLao.ttf", "NotoSansLao", "bold");
+      s += String.fromCharCode(...bytes.slice(i, i + 8192));
+    return btoa(s);
+  };
+  try {
+    const [regBuf, boldBuf] = await Promise.all([
+      fetch("/fonts/NotoSansLao-Regular.ttf").then(r => r.arrayBuffer()),
+      fetch("/fonts/NotoSansLao-Bold.ttf").then(r => r.arrayBuffer()),
+    ]);
+    doc.addFileToVFS("NotoSansLao-Regular.ttf", toB64(regBuf));
+    doc.addFont("NotoSansLao-Regular.ttf", "NotoSansLao", "normal");
+    doc.addFileToVFS("NotoSansLao-Bold.ttf", toB64(boldBuf));
+    doc.addFont("NotoSansLao-Bold.ttf", "NotoSansLao", "bold");
   } catch { /* falls back to helvetica */ }
 
   const T = lang === "lo" ? {
     statement:  "ລາຍງານ AR / AP",
-    ar_title:   (n: string) => `ລູກໜີ້ (AR)  —  ${n} ເປັນໜີ້ທ່ານ`,
-    ap_title:   (n: string) => `ເຈ້ຍໜີ້ (AP)  —  ທ່ານເປັນໜີ້ ${n}`,
-    no_records: "ບໍ່ມີລາຍການ.",
-    col_desc:   "ລາຍລະອຽດ",
+    ar_title:   (n: string) => `AR (ລູກໜີ້)  —  ${n} ຕິດໜີ້ທ່ານ`,
+    ap_title:   (n: string) => `AP (ເຈົ້ານີ້)  —  ທ່ານຕິດໜີ້ ${n}`,
+    no_records: "ບໍ່ມີຂໍ້ມູນ.",
+    col_desc:   "ລາຍການ",
     col_agreed: "ວັນທີ",
     col_status: "ສະຖານະ",
-    col_orig:   "ຈຳນວນ",
-    col_paid:   "ຈ່າຍ",
-    col_recv:   "ຮັບ",
-    col_rem:    "ຄ້າງ",
+    col_orig:   "ຈໍານວນ",
+    col_paid:   "ຈ່າຍແລ້ວ",
+    col_recv:   "ຮັບແລ້ວ",
+    col_rem:    "ຍັງຄ້າງ",
     s_open:     "ຄ້າງ",
     s_partial:  "ບາງສ່ວນ",
-    s_settled:  "ສຳເລັດ",
-    due:        "ກຳນົດ:",
-    overdue:    "ເກີນ",
-    payment:    "ຊຳລະ",
+    s_settled:  "ສໍາເລັດ",
+    due:        "ກໍານົດ:",
+    overdue:    "ເກີນກໍານົດ",
+    payment:    "ຊໍາລະ",
     total:      "ລວມ",
     no_desc:    "(ບໍ່ມີລາຍລະອຽດ)",
-    footer:     "Catdy's AR AP Tracker  |  ລັບສະເພາະ",
+    footer:     "Catdy's AR AP Tracker  |  ເອກະສານລັບ",
   } : {
     statement:  "AR / AP Statement",
     ar_title:   (n: string) => `Receivables (AR)  —  ${n} owes you`,
