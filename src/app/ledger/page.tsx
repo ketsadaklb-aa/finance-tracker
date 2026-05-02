@@ -84,253 +84,282 @@ function toBlobUrl(rawUrl: string): { blobUrl: string; isImage: boolean } | null
   return { blobUrl: rawUrl, isImage };
 }
 
-async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[]) {
+async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], lang: "en" | "lo" = "en") {
   const { default: jsPDF } = await import("jspdf");
-
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
 
-  // Embed Noto Sans Lao so Lao script renders correctly (falls back gracefully for Latin too)
+  // Embed Noto Sans Lao (supports Lao + Latin)
   try {
     const fontRes = await fetch("/fonts/NotoSansLao.ttf");
     const fontBuf = await fontRes.arrayBuffer();
     const bytes = new Uint8Array(fontBuf);
     let binary = "";
-    for (let i = 0; i < bytes.length; i += 8192) {
+    for (let i = 0; i < bytes.length; i += 8192)
       binary += String.fromCharCode(...bytes.slice(i, i + 8192));
-    }
     const b64 = btoa(binary);
     doc.addFileToVFS("NotoSansLao.ttf", b64);
     doc.addFont("NotoSansLao.ttf", "NotoSansLao", "normal");
     doc.addFont("NotoSansLao.ttf", "NotoSansLao", "bold");
-  } catch {
-    // If font load fails, jsPDF falls back to helvetica (Lao will be boxes but won't crash)
-  }
-  const PAGE_W = 148;
-  const ML = 8;
-  const MR = 8;
-  const CW = PAGE_W - ML - MR; // 132mm
-  const FOOTER_Y = 204;
-  const MAX_Y = FOOTER_Y - 6;
+  } catch { /* falls back to helvetica */ }
+
+  const T = lang === "lo" ? {
+    statement:  "ລາຍງານ AR / AP",
+    ar_title:   (n: string) => `ລູກໜີ້ (AR)  —  ${n} ເປັນໜີ້ທ່ານ`,
+    ap_title:   (n: string) => `ເຈ້ຍໜີ້ (AP)  —  ທ່ານເປັນໜີ້ ${n}`,
+    no_records: "ບໍ່ມີລາຍການ.",
+    col_desc:   "ລາຍລະອຽດ",
+    col_agreed: "ວັນທີ",
+    col_status: "ສະຖານະ",
+    col_orig:   "ຈຳນວນ",
+    col_paid:   "ຈ່າຍ",
+    col_recv:   "ຮັບ",
+    col_rem:    "ຄ້າງ",
+    s_open:     "ຄ້າງ",
+    s_partial:  "ບາງສ່ວນ",
+    s_settled:  "ສຳເລັດ",
+    due:        "ກຳນົດ:",
+    overdue:    "ເກີນ",
+    payment:    "ຊຳລະ",
+    total:      "ລວມ",
+    no_desc:    "(ບໍ່ມີລາຍລະອຽດ)",
+    footer:     "Catdy's AR AP Tracker  |  ລັບສະເພາະ",
+  } : {
+    statement:  "AR / AP Statement",
+    ar_title:   (n: string) => `Receivables (AR)  —  ${n} owes you`,
+    ap_title:   (n: string) => `Payables (AP)  —  You owe ${n}`,
+    no_records: "No records.",
+    col_desc:   "Description",
+    col_agreed: "Agreed",
+    col_status: "Status",
+    col_orig:   "Original",
+    col_paid:   "Paid",
+    col_recv:   "Received",
+    col_rem:    "Remaining",
+    s_open:     "OPEN",
+    s_partial:  "PARTIAL",
+    s_settled:  "SETTLED",
+    due:        "Due:",
+    overdue:    "OVERDUE",
+    payment:    "Payment",
+    total:      "TOTAL",
+    no_desc:    "(No description)",
+    footer:     "Catdy's AR AP Tracker  |  Confidential",
+  };
+
+  const PAGE_W = 148, ML = 8, MR = 8, CW = PAGE_W - ML - MR;
+  const FOOTER_Y = 204, MAX_Y = FOOTER_Y - 6;
+  const F = "NotoSansLao";
+
+  // Column layout (132mm total): Desc 42 | Agreed 22 | Status 18 | Orig 16 | Paid 16 | Rem 18
+  const C_DESC    = ML + 1;         // left-align
+  const C_DATE    = ML + 43;        // left-align
+  const C_STATUS  = ML + 65;        // left-align
+  const C_ORIG_R  = ML + 98 - 1;    // right-align (col ends at ML+98)
+  const C_PAID_R  = ML + 114 - 1;   // right-align (col ends at ML+114)
+  const C_REM_R   = ML + CW - 1;    // right-align
 
   const num = (v: number) => Math.round(v).toLocaleString("en-US");
-  const fd = (d: string | Date) =>
+  const fd  = (d: string | Date) =>
     (typeof d === "string" ? new Date(d) : d).toLocaleDateString("en-GB", {
       day: "2-digit", month: "short", year: "numeric",
     });
   const now = new Date();
 
   let y = 0;
-  const checkY = (needed: number) => { if (y + needed > MAX_Y) { doc.addPage(); y = 14; } };
+  const checkY = (h: number) => { if (y + h > MAX_Y) { doc.addPage(); y = 14; } };
 
-  // ── Header (page 1) ──
-  doc.setFillColor(30, 64, 175);
-  doc.rect(0, 0, PAGE_W, 28, "F");
+  // ── Page 1 header ──
+  doc.setFillColor(30, 41, 59);
+  doc.rect(0, 0, PAGE_W, 26, "F");
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
-  doc.setFont("NotoSansLao", "bold");
-  doc.text(contact.name, ML, 14);
-  doc.setFontSize(8.5);
-  doc.setFont("NotoSansLao", "normal");
-  doc.text("AR / AP Statement   |   " + fd(now), ML, 22);
+  doc.setFontSize(15);
+  doc.setFont(F, "bold");
+  doc.text(contact.name, ML, 13);
+  doc.setFontSize(8);
+  doc.setFont(F, "normal");
+  doc.setTextColor(148, 163, 184);
+  doc.text(T.statement + "  |  " + fd(now), ML, 21);
   doc.setTextColor(30, 41, 59);
-  y = 34;
+  y = 32;
+
+  // ── Column header row (reused after page breaks) ──
+  const drawColHeaders = (isAR: boolean) => {
+    const H = 7;
+    doc.setFillColor(241, 245, 249);
+    doc.rect(ML, y, CW, H, "F");
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.3);
+    doc.line(ML, y + H, ML + CW, y + H);
+    doc.setLineWidth(0.15);
+    for (const sx of [ML + 42, ML + 64, ML + 82, ML + 98, ML + 114])
+      doc.line(sx, y + 1, sx, y + H - 1);
+    doc.setFontSize(6.5);
+    doc.setFont(F, "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text(T.col_desc,   C_DESC,   y + 4.8);
+    doc.text(T.col_agreed, C_DATE,   y + 4.8);
+    doc.text(T.col_status, C_STATUS, y + 4.8);
+    doc.text(T.col_orig,   C_ORIG_R, y + 4.8, { align: "right" });
+    doc.text(isAR ? T.col_recv : T.col_paid, C_PAID_R, y + 4.8, { align: "right" });
+    doc.text(T.col_rem,    C_REM_R,  y + 4.8, { align: "right" });
+    y += H;
+  };
 
   const drawSection = (items: ARItem[], type: "ar" | "ap") => {
     const isAR = type === "ar";
 
-    // Section header bar
-    checkY(14);
-    if (isAR) doc.setFillColor(220, 252, 231); else doc.setFillColor(254, 226, 226);
-    doc.rect(ML, y, CW, 8, "F");
+    // Section title + rule
+    checkY(18);
     doc.setFontSize(9);
-    doc.setFont("NotoSansLao", "bold");
-    if (isAR) doc.setTextColor(21, 128, 61); else doc.setTextColor(185, 28, 28);
-    doc.text(
-      isAR ? "Receivables (AR)  -  " + contact.name + " owes you"
-           : "Payables (AP)  -  You owe " + contact.name,
-      ML + 3, y + 5.5
-    );
+    doc.setFont(F, "bold");
     doc.setTextColor(30, 41, 59);
+    doc.text(isAR ? T.ar_title(contact.name) : T.ap_title(contact.name), ML, y + 5.5);
+    doc.setDrawColor(30, 41, 59);
+    doc.setLineWidth(0.4);
+    doc.line(ML, y + 7.5, ML + CW, y + 7.5);
     y += 11;
 
     if (items.length === 0) {
-      doc.setFontSize(8);
-      doc.setFont("NotoSansLao", "normal");
+      checkY(9);
+      doc.setFontSize(7.5);
+      doc.setFont(F, "normal");
       doc.setTextColor(148, 163, 184);
-      doc.text("No records.", ML + 2, y + 4);
-      doc.setTextColor(30, 41, 59);
-      y += 10;
+      doc.text(T.no_records, C_DESC, y + 5);
+      y += 9;
       return;
     }
+
+    drawColHeaders(isAR);
 
     const totals: Record<string, { orig: number; paid: number; rem: number }> = {};
 
     for (const item of items) {
-      const overdue = !!(item.dueDate && new Date(item.dueDate) < now && item.status !== "settled");
-      const statusText = item.status === "settled" ? "SETTLED" : item.status === "partial" ? "PARTIAL" : "OPEN";
-      const desc = item.description || "(No description)";
-      const dueLine = item.dueDate
-        ? "Due: " + fd(item.dueDate) + (overdue ? "  OVERDUE!" : "")
-        : "No due date";
+      const overdue  = !!(item.dueDate && new Date(item.dueDate) < now && item.status !== "settled");
+      const ccy      = item.currency.code;
+      const desc     = item.description || T.no_desc;
+      const descLines = (doc.splitTextToSize(desc, 40) as string[]).slice(0, 2);
+      const hasDue   = !!item.dueDate;
+      const lineCount = Math.max(descLines.length, hasDue ? 2 : 1);
+      const rowH     = 3 + lineCount * 4.5 + 2;
+      const totalH   = rowH + item.payments.length * 5;
 
-      // Pre-measure description text (leave 20mm on right for status badge)
-      const descLines = doc.splitTextToSize(desc, CW - 8 - 20) as string[];
+      const prevY = y;
+      checkY(totalH + 1);
+      if (y !== prevY) drawColHeaders(isAR); // page break — reprint headers
 
-      // Card height — kept compact
-      const CPAD = 2;
-      const DESC_LH = 4.5;
-      const DATE_H = 4.5;
-      const DIV_H = 2;
-      // AMT_H = labels row (4) + values row (5.5) = 9.5
-      const AMT_H = 9.5;
-      const PAY_H = 4;
-      const cardH = CPAD + descLines.length * DESC_LH + DATE_H + DIV_H + AMT_H
-                  + item.payments.length * PAY_H + CPAD;
+      const rowY = y;
 
-      checkY(cardH + 3);
-      const cardY = y;
-
-      // Card background
-      doc.setFillColor(249, 250, 251);
-      doc.rect(ML, cardY, CW, cardH, "F");
-
-      // Left coloured border (status indicator)
-      if (item.status === "settled")  doc.setFillColor(21, 128, 61);
-      else if (overdue)               doc.setFillColor(220, 38, 38);
-      else if (isAR)                  doc.setFillColor(37, 99, 235);
-      else                            doc.setFillColor(185, 28, 28);
-      doc.rect(ML, cardY, 3, cardH, "F");
-
-      let cy = cardY + CPAD;
-
-      // Status badge (top-right)
-      if (item.status === "settled")       doc.setFillColor(220, 252, 231);
-      else if (item.status === "partial")  doc.setFillColor(255, 237, 213);
-      else                                 doc.setFillColor(254, 226, 226);
-      doc.roundedRect(ML + CW - 19, cy, 17, 5.5, 1.5, 1.5, "F");
-      doc.setFontSize(6.5);
-      doc.setFont("NotoSansLao", "bold");
-      if (item.status === "settled")       doc.setTextColor(21, 128, 61);
-      else if (item.status === "partial")  doc.setTextColor(154, 52, 18);
-      else                                 doc.setTextColor(185, 28, 28);
-      doc.text(statusText, ML + CW - 10.5, cy + 3.9, { align: "center" });
-
-      // Description (bold)
-      doc.setFontSize(9);
-      doc.setFont("NotoSansLao", "bold");
+      // Description (bold, wraps up to 2 lines)
+      doc.setFontSize(8);
+      doc.setFont(F, "bold");
       doc.setTextColor(30, 41, 59);
-      doc.text(descLines, ML + 5, cy + 4);
-      cy += descLines.length * DESC_LH;
+      doc.text(descLines, C_DESC, rowY + 4.5);
 
-      // Agreed / due date line
-      doc.setFontSize(9);
-      doc.setFont("NotoSansLao", "normal");
-      doc.setTextColor(51, 65, 85);
-      doc.text("Agreed: " + fd(item.agreementDate) + "   |   " + dueLine, ML + 5, cy + 3.5);
-      cy += DATE_H;
+      // Agreed date
+      doc.setFont(F, "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(fd(item.agreementDate), C_DATE, rowY + 4.5);
 
-      // Thin divider
-      doc.setDrawColor(226, 232, 240);
-      doc.setLineWidth(0.2);
-      doc.line(ML + 4, cy + 0.5, ML + CW - 2, cy + 0.5);
-      cy += DIV_H;
+      // Due date (2nd line, smaller)
+      if (item.dueDate) {
+        doc.setFontSize(6.5);
+        doc.setTextColor(overdue ? 220 : 148, overdue ? 38 : 163, overdue ? 38 : 184);
+        doc.text(T.due + " " + fd(item.dueDate) + (overdue ? " !" : ""), C_DATE, rowY + 9);
+      }
 
-      // ── Three-column amounts (2 rows: labels+CCY / values) ──
-      const COL1 = ML + 5;
-      const COL2 = ML + 49;
-      const COL3 = ML + CW - 2;
+      // Status
+      doc.setFontSize(7.5);
+      doc.setFont(F, "bold");
+      const statusLabel = overdue && item.status !== "settled" ? T.overdue
+                        : item.status === "settled" ? T.s_settled
+                        : item.status === "partial"  ? T.s_partial : T.s_open;
+      if (item.status === "settled")      doc.setTextColor(21, 128, 61);
+      else if (item.status === "partial") doc.setTextColor(154, 52, 18);
+      else if (overdue)                   doc.setTextColor(220, 38, 38);
+      else                                doc.setTextColor(100, 116, 139);
+      doc.text(statusLabel, C_STATUS, rowY + 4.5);
 
-      // Row 1: CCY code + column labels inline (4mm)
-      doc.setFontSize(7);
-      doc.setFont("NotoSansLao", "normal");
-      doc.setTextColor(148, 163, 184);
-      doc.text(item.currency.code + "  Original", COL1, cy + 3.5);
-      doc.text(isAR ? "Received" : "Paid", COL2, cy + 3.5);
-      doc.text("Remaining", COL3, cy + 3.5, { align: "right" });
-      cy += 4;
-
-      // Row 2: values — Original + Paid in grey, Remaining in highlight box (5.5mm)
-      const ccy = item.currency.code;
-      doc.setFontSize(9);
-      doc.setFont("NotoSansLao", "normal");
+      // Original (grey)
+      doc.setFont(F, "normal");
+      doc.setFontSize(7.5);
       doc.setTextColor(100, 116, 139);
-      doc.text(num(item.originalAmount) + " " + ccy, COL1, cy + 4.5);
-      doc.text(num(item.paidAmount) + " " + ccy, COL2, cy + 4.5);
+      doc.text(num(item.originalAmount), C_ORIG_R, rowY + 4.5, { align: "right" });
 
-      // Measure remaining text at bold 10pt before drawing box
-      doc.setFont("NotoSansLao", "bold");
-      doc.setFontSize(10);
-      const remText = num(item.remainingAmount) + " " + ccy;
-      const remW = doc.getTextWidth(remText);
-      const REM_PAD = 2.5;
-      const boxX = COL3 - remW - REM_PAD * 2;
-      const boxY = cy + 0.2;
-      const boxH = 5.2;
-      if (item.status === "settled")       doc.setFillColor(220, 252, 231);
-      else if (overdue || !isAR)           doc.setFillColor(254, 226, 226);
-      else                                 doc.setFillColor(219, 234, 254);
-      doc.roundedRect(boxX, boxY, remW + REM_PAD * 2, boxH, 1.2, 1.2, "F");
+      // Paid (grey)
+      doc.text(num(item.paidAmount), C_PAID_R, rowY + 4.5, { align: "right" });
+
+      // Remaining (bold, coloured)
+      doc.setFont(F, "bold");
+      doc.setFontSize(8.5);
       if (item.status === "settled")  doc.setTextColor(21, 128, 61);
       else if (overdue)               doc.setTextColor(220, 38, 38);
       else if (!isAR)                 doc.setTextColor(185, 28, 28);
       else                            doc.setTextColor(37, 99, 235);
-      doc.text(remText, COL3 - REM_PAD, cy + 4.5, { align: "right" });
-      cy += 5.5;
+      doc.text(num(item.remainingAmount) + " " + ccy, C_REM_R, rowY + 4.5, { align: "right" });
+
+      y += rowH;
 
       // Payment sub-rows
       for (const p of item.payments) {
-        doc.setFontSize(7.5);
-        doc.setFont("NotoSansLao", "normal");
-        doc.setTextColor(100, 116, 139);
-        const note = p.note ? "  " + p.note.substring(0, 28) : "";
-        doc.text("  Payment  " + fd(p.date) + note, ML + 5, cy + 3.2);
-        doc.setFont("NotoSansLao", "bold");
-        doc.setFontSize(8);
+        const pY = y;
+        doc.setFontSize(6.5);
+        doc.setFont(F, "normal");
+        doc.setTextColor(148, 163, 184);
+        const noteStr = p.note ? "  " + p.note.substring(0, 22) : "";
+        doc.text("  └ " + T.payment + "  " + fd(p.date) + noteStr, C_DESC, pY + 3.5);
+        doc.setFont(F, "bold");
+        doc.setFontSize(7);
         if (isAR) doc.setTextColor(21, 128, 61); else doc.setTextColor(37, 99, 235);
-        doc.text(num(p.amount) + " " + p.currency.code, ML + CW - 2, cy + 3.2, { align: "right" });
-        cy += PAY_H;
+        doc.text(num(p.amount) + " " + p.currency.code, C_PAID_R, pY + 3.5, { align: "right" });
+        y += 5;
       }
 
-      y = cardY + cardH + 2; // 2mm gap between cards
+      // Row divider
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.2);
+      doc.line(ML, y, ML + CW, y);
 
       if (!totals[ccy]) totals[ccy] = { orig: 0, paid: 0, rem: 0 };
       totals[ccy].orig += item.originalAmount;
       totals[ccy].paid += item.paidAmount;
-      totals[ccy].rem += item.remainingAmount;
+      totals[ccy].rem  += item.remainingAmount;
     }
 
-    // Per-currency totals block
+    // Totals row(s) per currency
     y += 2;
     for (const [code, t] of Object.entries(totals)) {
-      checkY(11);
+      checkY(8);
       doc.setFillColor(241, 245, 249);
-      doc.rect(ML, y, CW, 9, "F");
-      doc.setFontSize(8);
-      doc.setFont("NotoSansLao", "bold");
-      doc.setTextColor(71, 85, 105);
-      doc.text(
-        code + "   Original: " + num(t.orig) + "   " + (isAR ? "Received" : "Paid") + ": " + num(t.paid),
-        ML + 3, y + 6
-      );
-      if (isAR) doc.setTextColor(30, 41, 59); else doc.setTextColor(185, 28, 28);
-      doc.text("Remaining: " + num(t.rem) + " " + code, ML + CW - 2, y + 6, { align: "right" });
-      y += 11;
+      doc.rect(ML, y, CW, 7, "F");
+      doc.setFontSize(7.5);
+      doc.setFont(F, "bold");
+      doc.setTextColor(30, 41, 59);
+      doc.text(T.total + " (" + code + ")", C_DESC, y + 5);
+      doc.setFont(F, "normal");
+      doc.setTextColor(100, 116, 139);
+      doc.text(num(t.orig), C_ORIG_R, y + 5, { align: "right" });
+      doc.text(num(t.paid), C_PAID_R, y + 5, { align: "right" });
+      doc.setFont(F, "bold");
+      if (isAR) doc.setTextColor(37, 99, 235); else doc.setTextColor(185, 28, 28);
+      doc.text(num(t.rem) + " " + code, C_REM_R, y + 5, { align: "right" });
+      y += 8;
     }
-    y += 4;
+    y += 6;
   };
 
   drawSection(ar, "ar");
-  checkY(20);
+  checkY(18);
   drawSection(ap, "ap");
 
   // Footer on every page
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
-    doc.setFontSize(7);
-    doc.setFont("NotoSansLao", "normal");
+    doc.setFontSize(6.5);
+    doc.setFont(F, "normal");
     doc.setTextColor(148, 163, 184);
-    doc.text("Catdy's AR AP Tracker  |  Confidential", ML, FOOTER_Y);
+    doc.text(T.footer, ML, FOOTER_Y);
     doc.text(i + " / " + pages, PAGE_W - MR, FOOTER_Y, { align: "right" });
   }
 
@@ -971,12 +1000,20 @@ export default function LedgerPage() {
                   </button>
                   <div className="flex items-center gap-1.5 shrink-0 ml-3">
                     <button
-                      onClick={() => downloadContactPDF(contact, ar, ap)}
-                      title="Download PDF statement"
+                      onClick={() => downloadContactPDF(contact, ar, ap, "en")}
+                      title="Download PDF (English)"
                       className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors border border-blue-200"
                     >
                       <FileDown className="h-3.5 w-3.5" />
                       PDF
+                    </button>
+                    <button
+                      onClick={() => downloadContactPDF(contact, ar, ap, "lo")}
+                      title="Download PDF (ພາສາລາວ)"
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors border border-slate-200"
+                    >
+                      <FileDown className="h-3.5 w-3.5" />
+                      ລາວ
                     </button>
                     <button onClick={() => toggleContact(contact.id)} className="p-1 rounded hover:bg-slate-100">
                       {isOpen ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
