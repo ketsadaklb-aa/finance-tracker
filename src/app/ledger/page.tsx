@@ -87,6 +87,7 @@ function toBlobUrl(rawUrl: string): { blobUrl: string; isImage: boolean } | null
 function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: "en" | "lo"): string {
   const T = lang === "lo" ? {
     statement:  "ລາຍງານ AR / AP",
+    date_label: "ວັນທີ",
     ar_title:   (n: string) => `AR (ລູກໜີ້) — ${n} ຕິດໜີ້ທ່ານ`,
     ap_title:   (n: string) => `AP (ເຈົ້າໜີ້) — ທ່ານຕິດໜີ້ ${n}`,
     no_records: "ບໍ່ມີຂໍ້ມູນ.",
@@ -108,6 +109,7 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     footer:     "Catdy's AR AP Tracker — ເອກະສານລັບ",
   } : {
     statement:  "AR / AP Statement",
+    date_label: "Date",
     ar_title:   (n: string) => `Receivables (AR) — ${n} owes you`,
     ap_title:   (n: string) => `Payables (AP) — You owe ${n}`,
     no_records: "No records.",
@@ -214,9 +216,12 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     *{margin:0;padding:0;box-sizing:border-box}
     div,p,h1,h2,table,thead,tbody,tfoot,tr,th,td,small{font-family:'NSL',sans-serif}
     .wrap{padding:20px 24px;background:#fff;color:#1e293b;font-size:11px;line-height:1.45}
-    .hdr{background:#1e293b;color:#fff;padding:18px 24px;margin:-20px -24px 16px}
-    .hdr h1{font-size:20px;font-weight:700;margin-bottom:4px}
-    .hdr p{font-size:10px;color:#94a3b8}
+    .hdr{background:#1e293b;color:#fff;padding:18px 24px;margin:-20px -24px 16px;display:flex;justify-content:space-between;align-items:flex-start}
+    .hdr-left h1{font-size:20px;font-weight:700;margin-bottom:4px}
+    .hdr-left p{font-size:10px;color:#94a3b8}
+    .hdr-right{text-align:right;flex-shrink:0;padding-left:16px}
+    .hdr-right .date-label{font-size:9px;color:#94a3b8;margin-bottom:2px}
+    .hdr-right .date-value{font-size:17px;font-weight:700;color:#fff;white-space:nowrap}
     .sec-title{font-size:12px;font-weight:700;margin:14px 0 4px;padding-bottom:4px;border-bottom:1px solid #1e293b}
     .empty{color:#94a3b8;font-size:10px;padding:6px 0}
     table{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:10px}
@@ -242,8 +247,14 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
   </style>
   <div class="wrap">
     <div class="hdr">
-      <h1>${esc(contact.name)}</h1>
-      <p>${T.statement}  |  ${fd(now)}</p>
+      <div class="hdr-left">
+        <h1>${esc(contact.name)}</h1>
+        <p>${T.statement}</p>
+      </div>
+      <div class="hdr-right">
+        <div class="date-label">${T.date_label}</div>
+        <div class="date-value">${fd(now)}</div>
+      </div>
     </div>
     ${sectionHTML(ar, true)}
     ${sectionHTML(ap, false)}
