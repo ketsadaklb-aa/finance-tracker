@@ -264,44 +264,50 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
   </div>`;
 }
 
+let _pdfBusy = false;
+
 async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], lang: "en" | "lo" = "en") {
-  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-    import("jspdf"),
-    import("html2canvas"),
-  ]);
+  if (_pdfBusy) return;
+  _pdfBusy = true;
 
-  const origin = window.location.origin;
-
-  // @font-face MUST live in document.head — browsers ignore <style> inside div innerHTML
-  const FONT_ID = "nsl-pdf-fonts";
-  if (!document.getElementById(FONT_ID)) {
-    const s = document.createElement("style");
-    s.id = FONT_ID;
-    s.textContent = `
-      @font-face{font-family:'NSL';src:url('${origin}/fonts/NotoSansLao-Regular.ttf') format('truetype');font-weight:400}
-      @font-face{font-family:'NSL';src:url('${origin}/fonts/NotoSansLao-Bold.ttf')    format('truetype');font-weight:700}`;
-    document.head.appendChild(s);
-  }
-
-  // Force-load both weights before rendering
-  await Promise.allSettled([
-    document.fonts.load("400 14px NSL"),
-    document.fonts.load("700 14px NSL"),
-  ]);
-
-  // Clip wrapper: 0×0 fixed so nothing is visible; inner div is what html2canvas renders
-  const clip = document.createElement("div");
-  clip.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;overflow:hidden;z-index:-9999";
-  const container = document.createElement("div");
-  container.style.cssText = "position:absolute;left:0;top:0;width:794px;background:#fff";
-  container.innerHTML = buildStatementHTML(contact, ar, ap, lang);
-  clip.appendChild(container);
-  document.body.appendChild(clip);
-
-  // Small tick so layout reflows before capture
-  await new Promise(r => setTimeout(r, 80));
+  const htmlEl = document.documentElement;
+  let container: HTMLDivElement | null = null;
 
   try {
+    const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+      import("jspdf"),
+      import("html2canvas"),
+    ]);
+
+    const origin = window.location.origin;
+
+    // @font-face MUST live in document.head — browsers ignore <style> inside div innerHTML
+    const FONT_ID = "nsl-pdf-fonts";
+    if (!document.getElementById(FONT_ID)) {
+      const s = document.createElement("style");
+      s.id = FONT_ID;
+      s.textContent = `
+        @font-face{font-family:'NSL';src:url('${origin}/fonts/NotoSansLao-Regular.ttf') format('truetype');font-weight:400}
+        @font-face{font-family:'NSL';src:url('${origin}/fonts/NotoSansLao-Bold.ttf') format('truetype');font-weight:700}`;
+      document.head.appendChild(s);
+    }
+
+    await Promise.allSettled([
+      document.fonts.load("400 14px NSL"),
+      document.fonts.load("700 14px NSL"),
+    ]);
+
+    // Hide horizontal overflow so the off-screen absolute container never causes a visible flash or scroll jump
+    htmlEl.style.overflowX = "hidden";
+
+    container = document.createElement("div");
+    container.style.cssText = "position:absolute;left:-9999px;top:0;width:794px;background:#fff";
+    container.innerHTML = buildStatementHTML(contact, ar, ap, lang);
+    document.body.appendChild(container);
+
+    // Let the browser reflow before capture
+    await new Promise(r => setTimeout(r, 80));
+
     const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,
@@ -323,7 +329,7 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
       pageCanvas.width       = canvas.width;
       pageCanvas.height      = pageHeightPx;
       const ctx              = pageCanvas.getContext("2d")!;
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle          = "#ffffff";
       ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
       ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
       doc.addImage(pageCanvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, A4_W, A4_H);
@@ -334,7 +340,9 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
     console.error("PDF export error:", err);
     alert("PDF export failed — please try again.");
   } finally {
-    document.body.removeChild(clip);
+    if (container) document.body.removeChild(container);
+    htmlEl.style.overflowX = "";
+    _pdfBusy = false;
   }
 }
 
