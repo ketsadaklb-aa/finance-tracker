@@ -270,7 +270,8 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
   if (_pdfBusy) return;
   _pdfBusy = true;
 
-  const htmlEl = document.documentElement;
+  // globals.css already sets body { overflow-x: hidden }, so an off-screen
+  // absolute element at left:-9999px is safely clipped — no flash, no scroll jump.
   let container: HTMLDivElement | null = null;
 
   try {
@@ -296,9 +297,6 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
       document.fonts.load("400 14px NSL"),
       document.fonts.load("700 14px NSL"),
     ]);
-
-    // Hide horizontal overflow so the off-screen absolute container never causes a visible flash or scroll jump
-    htmlEl.style.overflowX = "hidden";
 
     container = document.createElement("div");
     container.style.cssText = "position:absolute;left:-9999px;top:0;width:794px;background:#fff";
@@ -341,7 +339,6 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
     alert("PDF export failed — please try again.");
   } finally {
     if (container) document.body.removeChild(container);
-    htmlEl.style.overflowX = "";
     _pdfBusy = false;
   }
 }
@@ -702,7 +699,7 @@ export default function LedgerPage() {
     setDialogOpen(true);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     let attachmentUrl: string | null | undefined = undefined;
