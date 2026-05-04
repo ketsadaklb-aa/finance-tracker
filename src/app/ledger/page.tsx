@@ -270,8 +270,6 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
   if (_pdfBusy) return;
   _pdfBusy = true;
 
-  // globals.css already sets body { overflow-x: hidden }, so an off-screen
-  // absolute element at left:-9999px is safely clipped — no flash, no scroll jump.
   let container: HTMLDivElement | null = null;
 
   try {
@@ -298,6 +296,7 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
       document.fonts.load("700 14px NSL"),
     ]);
 
+    // Mount off-screen so body clips it (body has overflow-x:hidden in globals.css)
     container = document.createElement("div");
     container.style.cssText = "position:absolute;left:-9999px;top:0;width:794px;background:#fff";
     container.innerHTML = buildStatementHTML(contact, ar, ap, lang);
@@ -306,12 +305,19 @@ async function downloadContactPDF(contact: Contact, ar: ARItem[], ap: APItem[], 
     // Let the browser reflow before capture
     await new Promise(r => setTimeout(r, 80));
 
+    // onclone: html2canvas works on a cloned document — we move the element to (0,0)
+    // inside the clone so the REAL page layout is never touched during capture.
     const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,
       allowTaint: false,
       backgroundColor: "#ffffff",
       logging: false,
+      onclone: (_doc: Document, el: HTMLElement) => {
+        el.style.position = "absolute";
+        el.style.left = "0";
+        el.style.top  = "0";
+      },
     });
 
     const A4_W = 210, A4_H = 297;
