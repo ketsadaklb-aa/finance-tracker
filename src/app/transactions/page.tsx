@@ -17,7 +17,7 @@ import {
 } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { TxTypeIcon, txTypeBubbleClass } from "@/components/ui/tx-type-icon";
-import { Plus, Trash2, Pencil, Filter, Paperclip, X, Search, ArrowLeftRight } from "lucide-react";
+import { Plus, Trash2, Pencil, Filter, Paperclip, X, Search, ArrowLeftRight, Copy, Check, Circle, CheckSquare } from "lucide-react";
 
 interface Currency { id: string; code: string; symbol: string }
 interface Account { id: string; name: string; currency: Currency }
@@ -76,6 +76,9 @@ export default function TransactionsPage() {
   const [txFile, setTxFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Multi-select state: when ≥1 selected, an action bar appears
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectMode = selectedIds.size > 0;
   const lastAccountIdRef = useRef<string>("");
 
   const fetchAll = useCallback(() => {
@@ -125,7 +128,63 @@ export default function TransactionsPage() {
     setOpen(true);
   }
 
+  /** Clone a transaction — opens the add sheet pre-filled with the source values, today's date. */
+  function duplicateTx(tx: Transaction) {
+    haptic(8);
+    setEditTx(null);
+    const cloneType = tx.type === "transfer-in" || tx.type === "transfer-out" ? "transfer" : (tx.type as TxType);
+    setForm({
+      type: cloneType,
+      amount: String(tx.amount),
+      accountId: tx.account.id,
+      toAccountId: "",
+      categoryId: tx.category?.id ?? "",
+      date: new Date().toISOString().slice(0, 10),
+      description: tx.description ?? "",
+    });
+    setTxFile(null);
+    setOpen(true);
+  }
+
   const editingTransferLeg = !!editTx && (editTx.type === "transfer-out" || editTx.type === "transfer-in");
+
+  // ─── Multi-select handlers ───────────────────────────────────────────
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  async function bulkDelete() {
+    if (selectedIds.size === 0) return;
+    haptic(20);
+    const ids = Array.from(selectedIds);
+    const snapshot = transactions;
+    // Optimistic remove
+    setTransactions(prev => prev.filter(t => !selectedIds.has(t.id)));
+    clearSelection();
+
+    let undone = false;
+    toast(`${ids.length} transaction${ids.length === 1 ? "" : "s"} deleted`, "success", {
+      action: { label: "Undo", onClick: () => { undone = true; setTransactions(snapshot); } },
+      duration: 5500,
+    });
+
+    setTimeout(async () => {
+      if (undone) return;
+      const results = await Promise.all(
+        ids.map(id => fetch(`/api/transactions/${id}`, { method: "DELETE" }).then(r => r.ok)),
+      );
+      const failed = results.filter(ok => !ok).length;
+      if (failed > 0) {
+        setTransactions(snapshot);
+        toast(`${failed} failed to delete — restored`, "error");
+      }
+    }, 5500);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -209,9 +268,11 @@ export default function TransactionsPage() {
     const q = search.trim().toLowerCase();
     return transactions.filter(tx => {
       if (filterType !== "all") {
-        // "transfer" filter should match both legs (transfer-in / transfer-out)
+        // "transfer" filter matches both legs; "other" filter matches other-in + other-out
         if (filterType === "transfer") {
           if (tx.type !== "transfer" && tx.type !== "transfer-in" && tx.type !== "transfer-out") return false;
+        } else if (filterType === "other-in" || filterType === "other-out" || (filterType as string) === "other") {
+          if (tx.type !== "other-in" && tx.type !== "other-out") return false;
         } else if (tx.type !== filterType) {
           return false;
         }
@@ -241,12 +302,70 @@ export default function TransactionsPage() {
     return Array.from(map.entries());
   }, [filtered]);
 
-  const hasActiveFilters =
-    filterType !== "all" || filterAccountId !== "all" || filterCategoryId !== "all" ||
-    !!dateFrom || !!dateTo || !!search;
+  const activeFilterCount =
+    (filterType !== "all" ? 1 : 0) +
+    (filterAccountId !== "all" ? 1 : 0) +
+    (filterCategoryId !== "all" ? 1 : 0) +
+    (dateFrom ? 1 : 0) +
+    (dateTo ? 1 : 0) +
+    (search ? 1 : 0);
+  const hasActiveFilters = activeFilterCount > 0;
+
+  // Per-type breakdown chip counts for the active filter set
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const tx of filtered) {
+      const t = tx.type === "transfer-in" || tx.type === "transfer-out" ? "transfer" : tx.type;
+      const grouped = (t === "other-in" || t === "other-out") ? "other" : t;
+      counts[grouped] = (counts[grouped] ?? 0) + 1;
+    }
+    return counts;
+  }, [filtered]);
+
+  // Per-day totals (signed delta in account currency — best-effort: aggregate by currency)
+  const dayTotals = useMemo(() => {
+    const out = new Map<string, { in: number; out: number; symbol: string }>();
+    for (const tx of filtered) {
+      const key = tx.date.slice(0, 10);
+      const cur = out.get(key) ?? { in: 0, out: 0, symbol: tx.currency.symbol };
+      const isIn = tx.type === "income" || tx.type === "transfer-in" || tx.type === "other-in";
+      if (isIn) cur.in += tx.amount;
+      else      cur.out += tx.amount;
+      out.set(key, cur);
+    }
+    return out;
+  }, [filtered]);
 
   return (
     <div className="space-y-4 md:space-y-6 animate-fade-in">
+      {/* Multi-select floating action bar — fixed bottom (above mobile bottom nav) */}
+      {selectMode && (
+        <div className="fixed bottom-[80px] left-3 right-3 md:left-1/2 md:-translate-x-1/2 md:bottom-6 md:max-w-md md:right-auto z-50 animate-fade-in">
+          <div className="bg-blue-600 text-white rounded-2xl shadow-2xl shadow-blue-600/40 px-3 py-2.5 flex items-center gap-2">
+            <button
+              onClick={clearSelection}
+              className="p-1.5 rounded-lg hover:bg-white/15 transition-colors"
+              aria-label="Clear selection"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <span className="font-semibold text-sm flex-1">{selectedIds.size} selected</span>
+            <button
+              onClick={() => setSelectedIds(new Set(filtered.map(t => t.id)))}
+              className="text-xs font-medium px-2 py-1 rounded-lg hover:bg-white/15 transition-colors flex items-center gap-1"
+            >
+              <CheckSquare className="h-3.5 w-3.5" /> All
+            </button>
+            <button
+              onClick={bulkDelete}
+              className="bg-white/15 hover:bg-white/25 text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+            >
+              <Trash2 className="h-4 w-4" /> Delete
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Page header */}
       <div className="flex items-center justify-between gap-3">
         <div>
@@ -254,16 +373,23 @@ export default function TransactionsPage() {
           <p className="hidden sm:block text-slate-500 text-sm mt-1">Income, expense, transfers and withdrawals</p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
+          <button
+            type="button"
             onClick={() => setShowFilters(true)}
-            className={hasActiveFilters ? "border-blue-300 text-blue-600" : ""}
-            aria-label="Open filters"
+            className={`relative inline-flex items-center justify-center h-9 px-3 rounded-xl border-2 text-sm font-semibold transition-all tap-feedback
+              ${hasActiveFilters
+                ? "border-blue-500 bg-blue-50 text-blue-700"
+                : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"}`}
+            aria-label={hasActiveFilters ? `${activeFilterCount} filters active` : "Open filters"}
           >
             <Filter className="h-4 w-4" />
-            <span className="hidden sm:inline ml-1">Filters{hasActiveFilters ? " •" : ""}</span>
-          </Button>
+            <span className="hidden sm:inline ml-1">Filters</span>
+            {hasActiveFilters && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
           <Button onClick={openAdd} size="sm" className="hidden sm:inline-flex">
             <Plus className="h-4 w-4 mr-1" />Add Transaction
           </Button>
@@ -292,24 +418,33 @@ export default function TransactionsPage() {
         )}
       </div>
 
-      {/* Type filter chips — horizontally scrollable */}
+      {/* Type filter chips — combined "Other" replaces other-in/other-out for cleaner UX */}
       <div className="-mx-4 px-4 md:mx-0 md:px-0 overflow-x-auto pb-1 scrollbar-hide">
         <div className="flex gap-2 min-w-max">
           <TypeChip active={filterType === "all"} onClick={() => setFilterType("all")} label="All" />
-          {TX_TYPES.map(t => (
-            <TypeChip
-              key={t.value}
-              active={filterType === t.value}
-              onClick={() => setFilterType(t.value)}
-              label={t.label}
-              iconType={t.value}
-            />
-          ))}
+          <TypeChip active={filterType === "income"}     onClick={() => setFilterType("income")}     label="Income"     iconType="income" />
+          <TypeChip active={filterType === "expense"}    onClick={() => setFilterType("expense")}    label="Expense"    iconType="expense" />
+          <TypeChip active={filterType === "transfer"}   onClick={() => setFilterType("transfer")}   label="Transfer"   iconType="transfer" />
+          <TypeChip active={filterType === "withdrawal"} onClick={() => setFilterType("withdrawal")} label="Withdrawal" iconType="withdrawal" />
+          <TypeChip
+            active={filterType === "other-in" || filterType === "other-out"}
+            onClick={() => setFilterType("other-in")}
+            label="Other"
+            iconType="other-in"
+          />
         </div>
       </div>
 
+      {/* Tx count breakdown — replaces the flat "5 transactions" line */}
       {filtered.length > 0 && (
-        <p className="text-xs text-slate-400">{filtered.length} transaction{filtered.length !== 1 ? "s" : ""}</p>
+        <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-500">
+          <span className="font-medium">{filtered.length} {filtered.length === 1 ? "transaction" : "transactions"}</span>
+          {typeCounts.income     > 0 && <CountChip color="emerald" count={typeCounts.income}     label="income" />}
+          {typeCounts.expense    > 0 && <CountChip color="rose"    count={typeCounts.expense}    label="expense" />}
+          {typeCounts.transfer   > 0 && <CountChip color="sky"     count={typeCounts.transfer}   label="transfer" />}
+          {typeCounts.withdrawal > 0 && <CountChip color="amber"   count={typeCounts.withdrawal} label="withdrawal" />}
+          {typeCounts.other      > 0 && <CountChip color="teal"    count={typeCounts.other}      label="other" />}
+        </div>
       )}
 
       {/* Mobile: cards grouped by day */}
@@ -321,18 +456,39 @@ export default function TransactionsPage() {
           }} />
         ) : (
           <div className="space-y-4">
-            {grouped.map(([day, txs]) => (
-              <section key={day}>
-                <h2 className="sticky top-[56px] z-10 bg-slate-50/95 backdrop-blur-sm py-1.5 px-1 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  {relativeDayLabel(day)}
-                </h2>
-                <div className="space-y-2 mt-2">
-                  {txs.map(tx => (
-                    <TxCard key={tx.id} tx={tx} onEdit={() => openEdit(tx)} onDelete={() => setDeleteConfirm(tx)} />
-                  ))}
-                </div>
-              </section>
-            ))}
+            {grouped.map(([day, txs]) => {
+              const totals = dayTotals.get(day);
+              return (
+                <section key={day}>
+                  <header className="sticky top-[56px] z-10 bg-slate-50/95 backdrop-blur-sm py-2 px-1 flex items-center justify-between gap-2">
+                    <h2 className="text-sm font-semibold text-slate-700">
+                      {relativeDayLabel(day)}
+                    </h2>
+                    {totals && (
+                      <p className="text-[11px] font-medium tracking-tight tabular-nums">
+                        {totals.in > 0 && <span className="text-emerald-600">+{totals.symbol}{Math.round(totals.in).toLocaleString()}</span>}
+                        {totals.in > 0 && totals.out > 0 && <span className="text-slate-300 mx-1">·</span>}
+                        {totals.out > 0 && <span className="text-rose-500">−{totals.symbol}{Math.round(totals.out).toLocaleString()}</span>}
+                      </p>
+                    )}
+                  </header>
+                  <div className="space-y-2 mt-2">
+                    {txs.map(tx => (
+                      <TxCard
+                        key={tx.id}
+                        tx={tx}
+                        onEdit={() => openEdit(tx)}
+                        onDelete={() => setDeleteConfirm(tx)}
+                        onDuplicate={() => duplicateTx(tx)}
+                        selectMode={selectMode}
+                        selected={selectedIds.has(tx.id)}
+                        onToggleSelect={() => toggleSelect(tx.id)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         )}
       </div>
@@ -718,35 +874,80 @@ function TypeBadge({ type }: { type: string }) {
   );
 }
 
-function TxCard({ tx, onEdit, onDelete }: { tx: Transaction; onEdit: () => void; onDelete: () => void }) {
+function TxCard({
+  tx, onEdit, onDelete, onDuplicate, selectMode, selected, onToggleSelect,
+}: {
+  tx: Transaction;
+  onEdit: () => void;
+  onDelete: () => void;
+  onDuplicate?: () => void;
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const meta = txTypeMeta(tx.type);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Strip "(XXX)" currency suffix from account name for cleaner display
+  const accountClean = tx.account.name.replace(/\s*\([A-Z]{3,4}\)\s*$/, "");
+
+  const handlePointerDown = () => {
+    if (selectMode) return;
+    longPressTimer.current = setTimeout(() => {
+      haptic(20);
+      onToggleSelect?.();
+    }, 450);
+  };
+  const handlePointerUp = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+  };
+
+  const handleCardClick = () => {
+    if (selectMode) { onToggleSelect?.(); return; }
+    setExpanded(e => !e);
+  };
+
   return (
     <div
-      className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden card-hover focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-300 transition-all"
-      onClick={() => setExpanded(e => !e)}
+      className={`bg-white rounded-2xl border overflow-hidden transition-all
+        ${selected
+          ? "border-blue-500 ring-2 ring-blue-500/20 shadow-md"
+          : "border-slate-100 shadow-sm card-hover focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-300"}`}
+      onClick={handleCardClick}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       role="button"
       tabIndex={0}
-      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded(x => !x); } }}
+      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleCardClick(); } }}
     >
       <div className="p-3.5 flex items-center gap-3">
-        {/* Type icon bubble (flat, modern) */}
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${txTypeBubbleClass(tx.type)}`}>
-          <TxTypeIcon type={tx.type} className="h-5 w-5" />
-        </div>
-        {/* Description + account */}
+        {/* Selection checkbox or type icon bubble */}
+        {selectMode ? (
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors
+            ${selected ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-400 ring-1 ring-slate-200"}`}>
+            {selected ? <Check className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+          </div>
+        ) : (
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${txTypeBubbleClass(tx.type)}`}>
+            <TxTypeIcon type={tx.type} className="h-5 w-5" />
+          </div>
+        )}
+        {/* Description + account · category */}
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-slate-800 truncate">
+          <p className="font-semibold text-slate-800 truncate text-[15px] leading-tight">
             {tx.description || meta.label}
           </p>
-          <p className="text-xs text-slate-500 truncate mt-0.5">
-            {tx.account.name}
+          <p className="text-xs text-slate-500 truncate mt-1">
+            {accountClean}
             {tx.category && <> · {tx.category.name}</>}
           </p>
         </div>
-        {/* Amount */}
+        {/* Amount — boosted typography */}
         <div className="text-right shrink-0">
-          <p className={`font-bold text-sm whitespace-nowrap ${txAmountClass(tx.type)}`}>
+          <p className={`font-bold text-base whitespace-nowrap tracking-tight tabular-nums ${txAmountClass(tx.type)}`}>
             {txAmountPrefix(tx.type)}{formatAmount(tx.amount, tx.currency.symbol)}
           </p>
           {tx.attachmentUrl && (
@@ -756,29 +957,36 @@ function TxCard({ tx, onEdit, onDelete }: { tx: Transaction; onEdit: () => void;
           )}
         </div>
       </div>
-      {/* Expanded actions */}
-      {expanded && (
-        <div className="border-t border-slate-100 flex divide-x divide-slate-100 animate-fade-in">
+      {/* Expanded actions — hidden in select mode */}
+      {expanded && !selectMode && (
+        <div className="border-t border-slate-100 grid grid-cols-3 divide-x divide-slate-100 animate-fade-in">
           <button
             onClick={e => { e.stopPropagation(); onEdit(); }}
-            className="flex-1 py-2.5 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
+            className="py-2.5 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
           >
             <Pencil className="h-3.5 w-3.5" /> Edit
           </button>
-          {tx.attachmentUrl && (
+          {onDuplicate ? (
+            <button
+              onClick={e => { e.stopPropagation(); onDuplicate(); }}
+              className="py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
+            >
+              <Copy className="h-3.5 w-3.5" /> Duplicate
+            </button>
+          ) : tx.attachmentUrl ? (
             <a
               href={tx.attachmentUrl}
               target="_blank"
               rel="noopener noreferrer"
               onClick={e => e.stopPropagation()}
-              className="flex-1 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
+              className="py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
             >
               <Paperclip className="h-3.5 w-3.5" /> Receipt
             </a>
-          )}
+          ) : <span />}
           <button
             onClick={e => { e.stopPropagation(); onDelete(); }}
-            className="flex-1 py-2.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
+            className="py-2.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
           >
             <Trash2 className="h-3.5 w-3.5" /> Delete
           </button>
@@ -786,6 +994,17 @@ function TxCard({ tx, onEdit, onDelete }: { tx: Transaction; onEdit: () => void;
       )}
     </div>
   );
+}
+
+function CountChip({ color, count, label }: { color: "emerald" | "rose" | "sky" | "amber" | "teal"; count: number; label: string }) {
+  const cls = {
+    emerald: "bg-emerald-50 text-emerald-700",
+    rose:    "bg-rose-50 text-rose-700",
+    sky:     "bg-sky-50 text-sky-700",
+    amber:   "bg-amber-50 text-amber-700",
+    teal:    "bg-teal-50 text-teal-700",
+  }[color];
+  return <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${cls}`}>{count} {label}</span>;
 }
 
 function EmptyState({
