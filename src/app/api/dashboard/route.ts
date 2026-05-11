@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession, getVisibleAccountIds, getVisibleContactIds } from "@/lib/auth";
 
+function isCurrentMonthQuery(now: Date, year: number, month: number): boolean {
+  return now.getFullYear() === year && now.getMonth() === month;
+}
+
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -162,7 +166,106 @@ export async function GET(request: NextRequest) {
       bucket[currency.code] = (bucket[currency.code] ?? 0) + tx.amount;
     }
 
-    return NextResponse.json({ netWorth, recentTransactions, arSummary, apSummary, monthlyTotals, prevMonthTotals });
+    // --- Spending & Income by Category (current month) ---
+    const currentMonthDetailed = await prisma.transaction.findMany({
+      where: { ...txAccountFilter, date: { gte: startOfMonth, lte: endOfMonth }, type: { in: ["income", "expense"] } },
+      select: { type: true, amount: true, currencyId: true, categoryId: true, date: true, description: true },
+    });
+    const categories = await prisma.category.findMany({ select: { id: true, name: true } });
+    const catMap = new Map(categories.map(c => [c.id, c.name]));
+
+    // shape: { [currencyCode]: [{ category, amount }] }
+    const expenseByCategoryRaw: Record<string, Record<string, number>> = {};
+    const incomeByCategoryRaw:  Record<string, Record<string, number>> = {};
+    for (const tx of currentMonthDetailed) {
+      const currency = currencyMap.get(tx.currencyId);
+      if (!currency) continue;
+      const catName = tx.categoryId ? (catMap.get(tx.categoryId) ?? "Uncategorized") : "Uncategorized";
+      const bucket = tx.type === "income" ? incomeByCategoryRaw : expenseByCategoryRaw;
+      if (!bucket[currency.code]) bucket[currency.code] = {};
+      bucket[currency.code][catName] = (bucket[currency.code][catName] ?? 0) + tx.amount;
+    }
+    const buildCategoryArray = (raw: Record<string, Record<string, number>>) =>
+      Object.fromEntries(Object.entries(raw).map(([code, cats]) => {
+        const total = Object.values(cats).reduce((s, n) => s + n, 0);
+        const arr = Object.entries(cats)
+          .map(([category, amount]) => ({ category, amount, percentage: total > 0 ? (amount / total) * 100 : 0 }))
+          .sort((a, b) => b.amount - a.amount);
+        return [code, arr];
+      }));
+    const spendingByCategory = buildCategoryArray(expenseByCategoryRaw);
+    const incomeByCategory   = buildCategoryArray(incomeByCategoryRaw);
+
+    // --- Daily Trend (current month) ---
+    // For each day 1..lastDay, sum income and expense per currency
+    const lastDay = endOfMonth.getDate();
+    const dailyTrend: Record<string, { day: number; income: number; expense: number }[]> = {};
+    for (const tx of currentMonthDetailed) {
+      const currency = currencyMap.get(tx.currencyId);
+      if (!currency) continue;
+      if (!dailyTrend[currency.code]) {
+        dailyTrend[currency.code] = Array.from({ length: lastDay }, (_, i) => ({ day: i + 1, income: 0, expense: 0 }));
+      }
+      const day = tx.date.getDate();
+      const entry = dailyTrend[currency.code][day - 1];
+      if (tx.type === "income") entry.income += tx.amount;
+      else entry.expense += tx.amount;
+    }
+
+    // --- Six-Month History (current month included) ---
+    const sixMonthsAgo = new Date(year, month - 5, 1);
+    const sixMonthTx = await prisma.transaction.findMany({
+      where: { ...txAccountFilter, date: { gte: sixMonthsAgo, lte: endOfMonth }, type: { in: ["income", "expense"] } },
+      select: { type: true, amount: true, currencyId: true, date: true },
+    });
+    type MonthBucket = { month: number; year: number; income: number; expense: number };
+    const historicalMonths: Record<string, MonthBucket[]> = {};
+    // Pre-seed all 6 months so even empty ones appear in the chart
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(year, month - 5 + i, 1);
+      for (const c of currencies) {
+        if (!historicalMonths[c.code]) historicalMonths[c.code] = [];
+        historicalMonths[c.code].push({ month: d.getMonth(), year: d.getFullYear(), income: 0, expense: 0 });
+      }
+    }
+    for (const tx of sixMonthTx) {
+      const currency = currencyMap.get(tx.currencyId);
+      if (!currency) continue;
+      const m = tx.date.getMonth();
+      const y = tx.date.getFullYear();
+      const bucket = historicalMonths[currency.code]?.find(b => b.month === m && b.year === y);
+      if (!bucket) continue;
+      if (tx.type === "income") bucket.income += tx.amount;
+      else bucket.expense += tx.amount;
+    }
+
+    // --- Top 3 Expenses This Month ---
+    const topExpenses = currentMonthDetailed
+      .filter(t => t.type === "expense")
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 3)
+      .map(t => {
+        const currency = currencyMap.get(t.currencyId)!;
+        return {
+          amount: t.amount,
+          description: t.description,
+          category: t.categoryId ? catMap.get(t.categoryId) ?? null : null,
+          date: t.date,
+          currency: { code: currency.code, symbol: currency.symbol },
+        };
+      });
+
+    // --- Avg Daily Spend (per currency, this month, based on days elapsed) ---
+    const dayCount = isCurrentMonthQuery(now, year, month) ? now.getDate() : lastDay;
+    const avgDailySpend: Record<string, { symbol: string; total: number }> = {};
+    for (const [code, totals] of Object.entries(monthlyTotals.expense)) {
+      avgDailySpend[code] = { symbol: totals.symbol, total: totals.total / Math.max(dayCount, 1) };
+    }
+
+    return NextResponse.json({
+      netWorth, recentTransactions, arSummary, apSummary, monthlyTotals, prevMonthTotals,
+      spendingByCategory, incomeByCategory, dailyTrend, historicalMonths, topExpenses, avgDailySpend,
+    });
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch dashboard data" }, { status: 500 });
   }

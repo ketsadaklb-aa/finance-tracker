@@ -7,11 +7,12 @@ import { formatAmount, relativeDayLabel, txAmountClass, txAmountPrefix } from "@
 import { TxTypeIcon, txTypeBubbleClass } from "@/components/ui/tx-type-icon";
 import {
   TrendingUp, TrendingDown, Wallet, ChevronLeft, ChevronRight,
-  AlertTriangle, RefreshCw, ArrowUp, ArrowDown, Minus, Plus, Paperclip,
+  AlertTriangle, RefreshCw, ArrowUp, ArrowDown, Minus, Plus, Paperclip, Flame, Calendar,
 } from "lucide-react";
 import Link from "next/link";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell, AreaChart, Area, CartesianGrid,
 } from "recharts";
 
 type CurrencyData = { symbol: string; balance: number; ar: number; ap: number; net: number };
@@ -43,6 +44,16 @@ interface DashboardData {
     income:  Record<string, number>;
     expense: Record<string, number>;
   };
+  // New insight fields
+  spendingByCategory?: Record<string, { category: string; amount: number; percentage: number }[]>;
+  incomeByCategory?:   Record<string, { category: string; amount: number; percentage: number }[]>;
+  dailyTrend?:         Record<string, { day: number; income: number; expense: number }[]>;
+  historicalMonths?:   Record<string, { month: number; year: number; income: number; expense: number }[]>;
+  topExpenses?:        Array<{
+    amount: number; description: string | null; category: string | null; date: string;
+    currency: { code: string; symbol: string };
+  }>;
+  avgDailySpend?: Record<string, { symbol: string; total: number }>;
 }
 
 const MONTH_NAMES_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -207,6 +218,31 @@ export default function DashboardPage() {
           </Card>
         )}
       </section>
+
+      {/* ─── Insights: Spending by Category + Daily Trend ────────────── */}
+      <SpendingInsights
+        spendingByCategory={data.spendingByCategory?.[activeCurrency]}
+        incomeByCategory={data.incomeByCategory?.[activeCurrency]}
+        dailyTrend={data.dailyTrend?.[activeCurrency]}
+        avgDailySpend={data.avgDailySpend?.[activeCurrency]}
+        topExpenses={data.topExpenses ?? []}
+        activeCurrency={activeCurrency}
+        monthName={MONTH_NAMES_LONG[month]}
+        year={year}
+      />
+
+      {/* ─── 6-Month Trend ──────────────────────────────────────────── */}
+      {data.historicalMonths?.[activeCurrency] && data.historicalMonths[activeCurrency].some(m => m.income > 0 || m.expense > 0) && (
+        <SixMonthTrend
+          history={data.historicalMonths[activeCurrency]}
+          symbol={
+            data.netWorth[activeCurrency]?.symbol
+            ?? data.monthlyTotals.income[activeCurrency]?.symbol
+            ?? data.monthlyTotals.expense[activeCurrency]?.symbol
+            ?? ""
+          }
+        />
+      )}
 
       {/* ─── AR / AP Summary ─────────────────────────────────────────── */}
       <section>
@@ -621,5 +657,204 @@ function DashboardSkeleton() {
       </div>
       <div className="shimmer h-64 rounded-2xl" />
     </div>
+  );
+}
+
+// ─── Spending Insights ────────────────────────────────────────────────────
+const CATEGORY_COLORS = [
+  "#3B82F6", "#8B5CF6", "#EC4899", "#F59E0B", "#10B981",
+  "#06B6D4", "#F97316", "#EF4444", "#6366F1", "#14B8A6",
+];
+
+function SpendingInsights({
+  spendingByCategory, incomeByCategory, dailyTrend, avgDailySpend, topExpenses,
+  activeCurrency, monthName, year,
+}: {
+  spendingByCategory?: { category: string; amount: number; percentage: number }[];
+  incomeByCategory?:   { category: string; amount: number; percentage: number }[];
+  dailyTrend?:         { day: number; income: number; expense: number }[];
+  avgDailySpend?:      { symbol: string; total: number };
+  topExpenses:         Array<{ amount: number; description: string | null; category: string | null; date: string; currency: { code: string; symbol: string } }>;
+  activeCurrency: string;
+  monthName: string;
+  year: number;
+}) {
+  const hasSpending = (spendingByCategory?.length ?? 0) > 0;
+  const hasIncome   = (incomeByCategory?.length ?? 0) > 0;
+  const hasDailyTrend = (dailyTrend?.length ?? 0) > 0 && (dailyTrend ?? []).some(d => d.income > 0 || d.expense > 0);
+  if (!hasSpending && !hasIncome && !hasDailyTrend) return null;
+
+  const symbol = avgDailySpend?.symbol ?? "";
+  const filteredTopExpenses = topExpenses.filter(t => t.currency.code === activeCurrency);
+
+  return (
+    <section>
+      <SectionTitle right={<span className="text-[11px] text-slate-400 font-medium">{monthName} {year} · {activeCurrency}</span>}>
+        Spending Insights
+      </SectionTitle>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Category donut + ranked list */}
+        {hasSpending && (
+          <Card className="p-5 lg:col-span-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Where your money went</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 items-center">
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={spendingByCategory}
+                    cx="50%" cy="50%"
+                    innerRadius={50} outerRadius={80}
+                    paddingAngle={2}
+                    dataKey="amount"
+                    stroke="none"
+                  >
+                    {spendingByCategory!.map((_, i) => (
+                      <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, borderRadius: 12, border: "1px solid #E2E8F0", boxShadow: "0 8px 24px rgba(15,23,42,0.08)" }}
+                    formatter={((value: unknown, _name: unknown, entry: unknown) => {
+                      const v = Number(value ?? 0);
+                      const e = entry as { payload?: { category?: string; percentage?: number } } | undefined;
+                      const pct = e?.payload?.percentage ?? 0;
+                      return [`${symbol}${v.toLocaleString()} (${pct.toFixed(1)}%)`, e?.payload?.category ?? ""];
+                    }) as never}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+
+              {/* Top categories ranked */}
+              <div className="space-y-2">
+                {spendingByCategory!.slice(0, 5).map((c, i) => (
+                  <div key={c.category} className="flex items-center gap-2 text-xs">
+                    <span className="block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
+                    <span className="text-slate-700 font-medium flex-1 truncate">{c.category}</span>
+                    <span className="text-slate-500 tabular-nums">{c.percentage.toFixed(0)}%</span>
+                    <span className="text-slate-900 font-semibold tabular-nums whitespace-nowrap">{symbol}{Math.round(c.amount).toLocaleString()}</span>
+                  </div>
+                ))}
+                {spendingByCategory!.length > 5 && (
+                  <p className="text-[11px] text-slate-400 pl-4.5 pt-1">+ {spendingByCategory!.length - 5} more</p>
+                )}
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Avg daily + top expenses callout */}
+        <Card className="p-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Highlights</p>
+          {avgDailySpend && avgDailySpend.total > 0 && (
+            <div className="mt-3 pb-3 border-b border-slate-100">
+              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider flex items-center gap-1">
+                <Calendar className="h-3 w-3" /> Average daily spend
+              </p>
+              <p className="text-xl font-bold text-slate-900 tracking-tight mt-0.5">
+                {avgDailySpend.symbol}{Math.round(avgDailySpend.total).toLocaleString()}
+              </p>
+            </div>
+          )}
+          {filteredTopExpenses.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider flex items-center gap-1 mb-2">
+                <Flame className="h-3 w-3" /> Biggest expenses
+              </p>
+              <ul className="space-y-2">
+                {filteredTopExpenses.map((t, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-50 text-rose-600 font-bold text-[10px] shrink-0">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-slate-800 truncate">{t.description || "(no description)"}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{t.category ?? "Uncategorized"}</p>
+                    </div>
+                    <p className="font-bold text-rose-500 text-xs tabular-nums whitespace-nowrap">{t.currency.symbol}{Math.round(t.amount).toLocaleString()}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!filteredTopExpenses.length && !(avgDailySpend && avgDailySpend.total > 0) && (
+            <p className="text-sm text-slate-400 mt-3">No spending yet for {activeCurrency}.</p>
+          )}
+        </Card>
+      </div>
+
+      {/* Daily trend area chart */}
+      {hasDailyTrend && (
+        <Card className="p-5 mt-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Daily flow this month</p>
+            <span className="text-[10px] text-slate-400">{activeCurrency}</span>
+          </div>
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={dailyTrend} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id="gradIncome" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10B981" stopOpacity={0.45} />
+                  <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gradExpense" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#F43F5E" stopOpacity={0.45} />
+                  <stop offset="100%" stopColor="#F43F5E" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false}
+                ticks={dailyTrend ? Array.from(new Set(dailyTrend.filter((_, i) => i % 5 === 0).map(d => d.day))) : []} />
+              <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={42}
+                tickFormatter={v => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}K` : String(v)} />
+              <Tooltip
+                contentStyle={{ fontSize: 12, borderRadius: 12, border: "1px solid #E2E8F0", boxShadow: "0 8px 24px rgba(15,23,42,0.08)" }}
+                formatter={((value: unknown) => Number(value ?? 0).toLocaleString()) as never}
+                labelFormatter={(label) => `Day ${label}`}
+              />
+              <Area type="monotone" dataKey="income"  stroke="#10B981" strokeWidth={2} fill="url(#gradIncome)"  />
+              <Area type="monotone" dataKey="expense" stroke="#F43F5E" strokeWidth={2} fill="url(#gradExpense)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+    </section>
+  );
+}
+
+// ─── 6-Month Trend ────────────────────────────────────────────────────────
+const MONTH_LETTERS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function SixMonthTrend({
+  history, symbol,
+}: {
+  history: { month: number; year: number; income: number; expense: number }[];
+  symbol: string;
+}) {
+  const data = history.map(h => ({
+    label: `${MONTH_LETTERS[h.month]} ${String(h.year).slice(2)}`,
+    Income: h.income,
+    Expenses: h.expense,
+    Savings: h.income - h.expense,
+  }));
+  return (
+    <section>
+      <SectionTitle>Six-Month Trend</SectionTitle>
+      <Card className="p-5">
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={data} barCategoryGap="20%">
+            <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={50}
+              tickFormatter={v => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}K` : String(v)} />
+            <Tooltip
+              contentStyle={{ fontSize: 12, borderRadius: 12, border: "1px solid #E2E8F0", boxShadow: "0 8px 24px rgba(15,23,42,0.08)" }}
+              formatter={((value: unknown) => `${symbol}${Number(value ?? 0).toLocaleString()}`) as never}
+            />
+            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+            <Bar dataKey="Income"   fill="#10B981" radius={[6, 6, 0, 0]} />
+            <Bar dataKey="Expenses" fill="#F43F5E" radius={[6, 6, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
+    </section>
   );
 }
