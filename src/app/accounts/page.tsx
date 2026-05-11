@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AmountInput } from "@/components/ui/amount-input";
 import { formatAmount } from "@/lib/utils";
-import { Plus, Wallet, Pencil, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Plus, Wallet, Pencil, Trash2, ChevronRight } from "lucide-react";
 
 interface Currency { id: string; code: string; symbol: string; name: string }
 interface Account { id: string; name: string; type: string; balance: number; currency: Currency; note: string | null }
@@ -110,31 +111,40 @@ export default function AccountsPage() {
         {accounts.length === 0 ? (
           <p className="text-slate-400 text-sm col-span-3">No accounts yet. Add one to get started.</p>
         ) : accounts.map(a => (
-          <Card key={a.id} className="animate-fade-in card-hover">
+          <Card key={a.id} className="animate-fade-in card-hover overflow-hidden">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Wallet className="h-4 w-4 text-slate-400" />
-                  <span>{a.name}</span>
-                </div>
-                <div className="flex items-center gap-1">
+                <Link
+                  href={`/accounts/${a.id}`}
+                  className="flex items-center gap-2 min-w-0 flex-1 group tap-feedback"
+                  aria-label={`Open ${a.name} ledger`}
+                >
+                  <Wallet className="h-4 w-4 text-slate-400 shrink-0" />
+                  <span className="truncate group-hover:text-blue-600 transition-colors">{a.name}</span>
+                </Link>
+                <div className="flex items-center gap-1 shrink-0">
                   <Badge variant="secondary">{a.type.replace("_", " ")}</Badge>
-                  <button onClick={() => openEdit(a)} className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors ml-1">
+                  <button onClick={() => openEdit(a)} className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors ml-1" aria-label="Edit">
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => setDeleteConfirm(a.id)} className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
+                  <button onClick={() => setDeleteConfirm(a.id)} className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" aria-label="Delete">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className={`text-2xl font-bold ${a.balance >= 0 ? "text-slate-900" : "text-red-600"}`}>
-                {formatAmount(a.balance, a.currency.symbol)}
-              </p>
-              <p className="text-xs text-slate-400 mt-1">{a.currency.code} · {a.currency.name}</p>
-              {a.note && <p className="text-xs text-slate-400 mt-1">{a.note}</p>}
-            </CardContent>
+            <Link href={`/accounts/${a.id}`} className="block tap-feedback">
+              <CardContent className="cursor-pointer">
+                <p className={`text-2xl font-bold ${a.balance >= 0 ? "text-slate-900" : "text-red-600"}`}>
+                  {formatAmount(a.balance, a.currency.symbol)}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">{a.currency.code} · {a.currency.name}</p>
+                {a.note && <p className="text-xs text-slate-400 mt-1">{a.note}</p>}
+                <p className="text-xs text-blue-500 mt-2 flex items-center gap-0.5 font-medium">
+                  View ledger <ChevronRight className="h-3 w-3" />
+                </p>
+              </CardContent>
+            </Link>
           </Card>
         ))}
       </div>

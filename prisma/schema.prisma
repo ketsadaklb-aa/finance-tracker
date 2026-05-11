@@ -110,7 +110,7 @@ model Category {
 
 model Transaction {
   id         String   @id @default(cuid())
-  type       String   // income | expense | transfer
+  type       String   // income | expense | withdrawal | transfer-out | transfer-in
   amount     Float
   currencyId String
   currency   Currency @relation(fields: [currencyId], references: [id])
@@ -125,12 +125,17 @@ model Transaction {
   import     StatementImport? @relation(fields: [importId], references: [id])
   attachmentUrl String?
 
+  // Pairs the two legs of a transfer together (transfer-out + transfer-in share this id)
+  transferGroupId String?
+
   // Link to AR/AP when payment is logged
   receivablePaymentId String?
   payablePaymentId    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([transferGroupId])
 }
 
 model Receivable {

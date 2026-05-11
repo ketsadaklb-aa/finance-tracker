@@ -34,6 +34,7 @@ const emptyForm = (defaultAccountId = "") => ({
   type: "expense" as TxType,
   amount: "",
   accountId: defaultAccountId,
+  toAccountId: "",            // only used for type === "transfer"
   categoryId: "",
   date: new Date().toISOString().slice(0, 10),
   description: "",
@@ -117,6 +118,7 @@ export default function TransactionsPage() {
       type: tx.type as TxType,
       amount: String(tx.amount),
       accountId: tx.account.id,
+      toAccountId: "",
       categoryId: tx.category?.id ?? "",
       date: tx.date.slice(0, 10),
       description: tx.description ?? "",
@@ -124,6 +126,8 @@ export default function TransactionsPage() {
     setTxFile(null);
     setOpen(true);
   }
+
+  const editingTransferLeg = !!editTx && (editTx.type === "transfer-out" || editTx.type === "transfer-in");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -206,7 +210,14 @@ export default function TransactionsPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return transactions.filter(tx => {
-      if (filterType !== "all" && tx.type !== filterType) return false;
+      if (filterType !== "all") {
+        // "transfer" filter should match both legs (transfer-in / transfer-out)
+        if (filterType === "transfer") {
+          if (tx.type !== "transfer" && tx.type !== "transfer-in" && tx.type !== "transfer-out") return false;
+        } else if (tx.type !== filterType) {
+          return false;
+        }
+      }
       if (filterAccountId !== "all" && tx.account.id !== filterAccountId) return false;
       if (filterCategoryId !== "all" && tx.category?.id !== filterCategoryId) return false;
       if (dateFrom && tx.date < dateFrom) return false;
@@ -396,32 +407,41 @@ export default function TransactionsPage() {
             <BottomSheetTitle>{editTx ? "Edit Transaction" : "New Transaction"}</BottomSheetTitle>
           </BottomSheetHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Type chips */}
-            <div>
-              <Label className="text-xs text-slate-500">Type</Label>
-              <div className="grid grid-cols-4 gap-2 mt-1.5">
-                {TX_TYPES.map(t => {
-                  const active = form.type === t.value;
-                  return (
-                    <button
-                      key={t.value}
-                      type="button"
-                      onClick={() => { haptic(6); setForm(f => ({ ...f, type: t.value, categoryId: "" })); }}
-                      className={`flex flex-col items-center gap-1 py-2.5 rounded-xl border-2 transition-all tap-feedback
-                        ${active
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}
-                      aria-pressed={active}
-                    >
-                      <TypeIcon type={t.value} className="h-5 w-5" />
-                      <span className="text-[11px] font-medium">{t.label}</span>
-                    </button>
-                  );
-                })}
+            {editingTransferLeg && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2">
+                Transfer legs are paired. Only <strong>date</strong>, <strong>description</strong> and <strong>receipt</strong> can be edited.
+                To change amount or accounts, delete this transfer and create a new one.
               </div>
-            </div>
+            )}
 
-            {/* Big amount input */}
+            {/* Type chips — hidden when editing a transfer leg */}
+            {!editingTransferLeg && (
+              <div>
+                <Label className="text-xs text-slate-500">Type</Label>
+                <div className="grid grid-cols-4 gap-2 mt-1.5">
+                  {TX_TYPES.map(t => {
+                    const active = form.type === t.value;
+                    return (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => { haptic(6); setForm(f => ({ ...f, type: t.value, categoryId: "" })); }}
+                        className={`flex flex-col items-center gap-1 py-2.5 rounded-xl border-2 transition-all tap-feedback
+                          ${active
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}
+                        aria-pressed={active}
+                      >
+                        <TypeIcon type={t.value} className="h-5 w-5" />
+                        <span className="text-[11px] font-medium">{t.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Big amount input — read-only for transfer legs */}
             <div>
               <Label className="text-xs text-slate-500">
                 Amount {selectedAccount ? `(${selectedAccount.currency.code})` : ""}
@@ -431,33 +451,71 @@ export default function TransactionsPage() {
                 value={form.amount}
                 onChange={v => setForm(f => ({ ...f, amount: v }))}
                 required
-                className="!h-14 !text-2xl !font-bold text-center"
+                disabled={editingTransferLeg}
+                className="!h-14 !text-2xl !font-bold text-center disabled:opacity-60"
                 autoFocus={!editTx}
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-slate-500">Account</Label>
-                <Select value={form.accountId} onValueChange={v => setForm(f => ({ ...f, accountId: v }))}>
-                  <SelectTrigger className="h-11"><SelectValue placeholder="Select…" /></SelectTrigger>
-                  <SelectContent>
-                    {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency.code})</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            {form.type === "transfer" && !editingTransferLeg ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-slate-500">From account</Label>
+                  <Select value={form.accountId} onValueChange={v => setForm(f => ({ ...f, accountId: v }))}>
+                    <SelectTrigger className="h-11"><SelectValue placeholder="Source…" /></SelectTrigger>
+                    <SelectContent>
+                      {accounts.map(a => (
+                        <SelectItem key={a.id} value={a.id} disabled={a.id === form.toAccountId}>
+                          {a.name} ({a.currency.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-slate-500">To account</Label>
+                  <Select value={form.toAccountId} onValueChange={v => setForm(f => ({ ...f, toAccountId: v }))}>
+                    <SelectTrigger className="h-11"><SelectValue placeholder="Destination…" /></SelectTrigger>
+                    <SelectContent>
+                      {accounts.map(a => (
+                        <SelectItem key={a.id} value={a.id} disabled={a.id === form.accountId}>
+                          {a.name} ({a.currency.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-slate-500">Category</Label>
-                <Select value={form.categoryId} onValueChange={v => setForm(f => ({ ...f, categoryId: v }))}>
-                  <SelectTrigger className="h-11"><SelectValue placeholder={form.type === "withdrawal" || form.type === "transfer" ? "Optional" : "Select…"} /></SelectTrigger>
-                  <SelectContent>
-                    {filteredCategories.length === 0
-                      ? <SelectItem value="__none__" disabled>No categories for {form.type}</SelectItem>
-                      : filteredCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-slate-500">Account</Label>
+                  <Select
+                    value={form.accountId}
+                    onValueChange={v => setForm(f => ({ ...f, accountId: v }))}
+                    disabled={editingTransferLeg}
+                  >
+                    <SelectTrigger className="h-11 disabled:opacity-60"><SelectValue placeholder="Select…" /></SelectTrigger>
+                    <SelectContent>
+                      {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency.code})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {!editingTransferLeg && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-slate-500">Category</Label>
+                    <Select value={form.categoryId} onValueChange={v => setForm(f => ({ ...f, categoryId: v }))}>
+                      <SelectTrigger className="h-11"><SelectValue placeholder={form.type === "withdrawal" ? "Optional" : "Select…"} /></SelectTrigger>
+                      <SelectContent>
+                        {filteredCategories.length === 0
+                          ? <SelectItem value="__none__" disabled>No categories for {form.type}</SelectItem>
+                          : filteredCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
             {/* Date quick-picks */}
             <div>
@@ -526,7 +584,17 @@ export default function TransactionsPage() {
 
             <BottomSheetFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)} className="h-11">Cancel</Button>
-              <Button type="submit" disabled={loading || uploading || !form.amount || !form.accountId} className="h-11">
+              <Button
+                type="submit"
+                disabled={
+                  loading ||
+                  uploading ||
+                  !form.amount ||
+                  !form.accountId ||
+                  (form.type === "transfer" && (!form.toAccountId || form.toAccountId === form.accountId))
+                }
+                className="h-11"
+              >
                 {uploading ? "Uploading…" : loading ? "Saving…" : editTx ? "Update" : "Save"}
               </Button>
             </BottomSheetFooter>
@@ -627,20 +695,24 @@ function TypeChip({ active, onClick, label, icon }: { active: boolean; onClick: 
 }
 
 function TypeIcon({ type, className }: { type: string; className?: string }) {
-  if (type === "income")     return <TrendingUp className={className} />;
-  if (type === "expense")    return <TrendingDown className={className} />;
-  if (type === "transfer")   return <ArrowLeftRight className={className} />;
-  if (type === "withdrawal") return <Landmark className={className} />;
+  if (type === "income")       return <TrendingUp className={className} />;
+  if (type === "expense")      return <TrendingDown className={className} />;
+  if (type === "transfer-out") return <ArrowLeftRight className={className} />;
+  if (type === "transfer-in")  return <ArrowLeftRight className={className} />;
+  if (type === "transfer")     return <ArrowLeftRight className={className} />;
+  if (type === "withdrawal")   return <Landmark className={className} />;
   return <TrendingDown className={className} />;
 }
 
 function TypeBadge({ type }: { type: string }) {
   const meta = txTypeMeta(type);
   const bg =
-    type === "income"     ? "bg-green-50 text-green-700 border-green-200"
-  : type === "expense"    ? "bg-red-50 text-red-700 border-red-200"
-  : type === "withdrawal" ? "bg-amber-50 text-amber-700 border-amber-200"
-  :                         "bg-slate-50 text-slate-600 border-slate-200";
+    type === "income"       ? "bg-green-50 text-green-700 border-green-200"
+  : type === "expense"      ? "bg-red-50 text-red-700 border-red-200"
+  : type === "withdrawal"   ? "bg-amber-50 text-amber-700 border-amber-200"
+  : type === "transfer-in"  ? "bg-blue-50 text-blue-700 border-blue-200"
+  : type === "transfer-out" ? "bg-slate-100 text-slate-700 border-slate-300"
+  :                           "bg-slate-50 text-slate-600 border-slate-200";
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${bg}`}>
       <TypeIcon type={type} className="h-3 w-3" />
@@ -663,9 +735,11 @@ function TxCard({ tx, onEdit, onDelete }: { tx: Transaction; onEdit: () => void;
       <div className="p-3.5 flex items-center gap-3">
         {/* Type emoji bubble */}
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0
-          ${tx.type === "income" ? "bg-green-50" :
-            tx.type === "expense" ? "bg-red-50" :
-            tx.type === "withdrawal" ? "bg-amber-50" : "bg-slate-50"}`}>
+          ${tx.type === "income"       ? "bg-green-50" :
+            tx.type === "expense"      ? "bg-red-50" :
+            tx.type === "withdrawal"   ? "bg-amber-50" :
+            tx.type === "transfer-in"  ? "bg-blue-50" :
+            tx.type === "transfer-out" ? "bg-slate-100" : "bg-slate-50"}`}>
           {meta.emoji}
         </div>
         {/* Description + account */}

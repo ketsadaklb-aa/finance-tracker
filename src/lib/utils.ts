@@ -43,23 +43,35 @@ export const TX_TYPES: { value: TxType; label: string; emoji: string }[] = [
   { value: "withdrawal", label: "Withdrawal", emoji: "🏧" },
 ];
 
+// Including the two transfer legs that the backend persists
+const ALL_TYPE_META: Record<string, { label: string; emoji: string }> = {
+  "income":       { label: "Income",       emoji: "💰" },
+  "expense":      { label: "Expense",      emoji: "💸" },
+  "transfer":     { label: "Transfer",     emoji: "↔️" },
+  "transfer-out": { label: "Transfer out", emoji: "↗️" },
+  "transfer-in":  { label: "Transfer in",  emoji: "↘️" },
+  "withdrawal":   { label: "Withdrawal",   emoji: "🏧" },
+};
+
 export function txTypeMeta(type: string) {
-  return TX_TYPES.find(t => t.value === type) ?? { value: type as TxType, label: type, emoji: "•" };
+  return ALL_TYPE_META[type] ?? { label: type, emoji: "•" };
 }
 
 export function txAmountClass(type: string): string {
   switch (type) {
-    case "income":     return "text-green-600";
-    case "expense":    return "text-red-500";
-    case "withdrawal": return "text-amber-600";
-    case "transfer":   return "text-slate-500";
-    default:           return "text-slate-500";
+    case "income":       return "text-green-600";
+    case "transfer-in":  return "text-blue-600";
+    case "expense":      return "text-red-500";
+    case "withdrawal":   return "text-amber-600";
+    case "transfer-out": return "text-slate-600";
+    case "transfer":     return "text-slate-500";
+    default:             return "text-slate-500";
   }
 }
 
 export function txAmountPrefix(type: string): string {
-  if (type === "income") return "+";
-  if (type === "expense" || type === "withdrawal") return "-";
+  if (type === "income" || type === "transfer-in") return "+";
+  if (type === "expense" || type === "withdrawal" || type === "transfer-out") return "-";
   return "";
 }
 
