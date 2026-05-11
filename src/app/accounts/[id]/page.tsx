@@ -9,10 +9,8 @@ import {
   formatAmount, relativeDayLabel,
   TX_TYPES, type TxType, txAmountClass, txAmountPrefix, txTypeMeta,
 } from "@/lib/utils";
-import {
-  ArrowLeft, Wallet, Paperclip, Search, X,
-  TrendingUp, TrendingDown, ArrowLeftRight, Landmark,
-} from "lucide-react";
+import { ArrowLeft, Wallet, Paperclip, Search, X } from "lucide-react";
+import { TxTypeIcon, txTypeBubbleClass } from "@/components/ui/tx-type-icon";
 
 interface Currency { id: string; code: string; symbol: string; name: string }
 interface Account { id: string; name: string; type: string; balance: number; currency: Currency; note: string | null }
@@ -22,14 +20,6 @@ interface Transaction {
   description: string | null; source: string; attachmentUrl: string | null;
   currency: Currency; category: Category | null;
   account: { id: string; name: string };
-}
-
-function TypeIcon({ type, className }: { type: string; className?: string }) {
-  if (type === "income")     return <TrendingUp     className={className} />;
-  if (type === "expense")    return <TrendingDown   className={className} />;
-  if (type === "transfer")   return <ArrowLeftRight className={className} />;
-  if (type === "withdrawal") return <Landmark       className={className} />;
-  return <TrendingDown className={className} />;
 }
 
 export default function AccountLedgerPage() {
@@ -203,7 +193,7 @@ export default function AccountLedgerPage() {
               active={filterType === t.value}
               onClick={() => setFilterType(t.value)}
               label={t.label}
-              icon={t.emoji}
+              iconType={t.value}
             />
           ))}
         </div>
@@ -238,18 +228,22 @@ function delta(tx: { type: string; amount: number }): number {
   return tx.type === "income" || tx.type === "transfer-in" ? tx.amount : -tx.amount;
 }
 
-function Chip({ active, onClick, label, icon }: { active: boolean; onClick: () => void; label: string; icon?: string }) {
+function Chip({
+  active, onClick, label, iconType,
+}: {
+  active: boolean; onClick: () => void; label: string; iconType?: string;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`h-9 px-3.5 rounded-full text-sm font-medium border whitespace-nowrap transition-all tap-feedback
+      className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-sm font-medium border whitespace-nowrap transition-all tap-feedback
         ${active
-          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-          : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"}`}
+          ? "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/30"
+          : "bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600"}`}
       aria-pressed={active}
     >
-      {icon && <span className="mr-1">{icon}</span>}
+      {iconType && <TxTypeIcon type={iconType} className="h-3.5 w-3.5" />}
       {label}
     </button>
   );
@@ -263,13 +257,9 @@ function LedgerRow({
 }) {
   const meta = txTypeMeta(tx.type);
   return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-3.5 flex items-center gap-3 card-hover">
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0
-        ${tx.type === "income"     ? "bg-green-50 text-green-600"
-        : tx.type === "expense"    ? "bg-red-50 text-red-500"
-        : tx.type === "withdrawal" ? "bg-amber-50 text-amber-600"
-        :                            "bg-slate-50 text-slate-500"}`}>
-        <TypeIcon type={tx.type} className="h-5 w-5" />
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3.5 flex items-center gap-3 card-hover">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${txTypeBubbleClass(tx.type)}`}>
+        <TxTypeIcon type={tx.type} className="h-5 w-5" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">

@@ -16,10 +16,8 @@ import {
   TX_TYPES, type TxType, txAmountClass, txAmountPrefix, txTypeMeta,
 } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
-import {
-  Plus, Trash2, Pencil, Filter, Paperclip, X, Search,
-  TrendingUp, TrendingDown, ArrowLeftRight, Landmark,
-} from "lucide-react";
+import { TxTypeIcon, txTypeBubbleClass } from "@/components/ui/tx-type-icon";
+import { Plus, Trash2, Pencil, Filter, Paperclip, X, Search, ArrowLeftRight } from "lucide-react";
 
 interface Currency { id: string; code: string; symbol: string }
 interface Account { id: string; name: string; currency: Currency }
@@ -304,7 +302,7 @@ export default function TransactionsPage() {
               active={filterType === t.value}
               onClick={() => setFilterType(t.value)}
               label={t.label}
-              icon={t.emoji}
+              iconType={t.value}
             />
           ))}
         </div>
@@ -432,7 +430,7 @@ export default function TransactionsPage() {
                             : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}
                         aria-pressed={active}
                       >
-                        <TypeIcon type={t.value} className="h-5 w-5" />
+                        <TxTypeIcon type={t.value} className="h-5 w-5" />
                         <span className="text-[11px] font-medium">{t.label}</span>
                       </button>
                     );
@@ -677,31 +675,25 @@ export default function TransactionsPage() {
 
 // ─── Components ─────────────────────────────────────────────────────────────
 
-function TypeChip({ active, onClick, label, icon }: { active: boolean; onClick: () => void; label: string; icon?: string }) {
+function TypeChip({
+  active, onClick, label, iconType,
+}: {
+  active: boolean; onClick: () => void; label: string; iconType?: string;
+}) {
   return (
     <button
       type="button"
       onClick={() => { haptic(5); onClick(); }}
-      className={`h-9 px-3.5 rounded-full text-sm font-medium border whitespace-nowrap transition-all tap-feedback
+      className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-sm font-medium border whitespace-nowrap transition-all tap-feedback
         ${active
-          ? "bg-blue-600 text-white border-blue-600 shadow-sm scale-[1.02]"
-          : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"}`}
+          ? "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/30 scale-[1.02]"
+          : "bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600"}`}
       aria-pressed={active}
     >
-      {icon && <span className="mr-1">{icon}</span>}
+      {iconType && <TxTypeIcon type={iconType} className="h-3.5 w-3.5" />}
       {label}
     </button>
   );
-}
-
-function TypeIcon({ type, className }: { type: string; className?: string }) {
-  if (type === "income")       return <TrendingUp className={className} />;
-  if (type === "expense")      return <TrendingDown className={className} />;
-  if (type === "transfer-out") return <ArrowLeftRight className={className} />;
-  if (type === "transfer-in")  return <ArrowLeftRight className={className} />;
-  if (type === "transfer")     return <ArrowLeftRight className={className} />;
-  if (type === "withdrawal")   return <Landmark className={className} />;
-  return <TrendingDown className={className} />;
 }
 
 function TypeBadge({ type }: { type: string }) {
@@ -715,7 +707,7 @@ function TypeBadge({ type }: { type: string }) {
   :                           "bg-slate-50 text-slate-600 border-slate-200";
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${bg}`}>
-      <TypeIcon type={type} className="h-3 w-3" />
+      <TxTypeIcon type={type} className="h-3 w-3" />
       {meta.label}
     </span>
   );
@@ -726,21 +718,16 @@ function TxCard({ tx, onEdit, onDelete }: { tx: Transaction; onEdit: () => void;
   const meta = txTypeMeta(tx.type);
   return (
     <div
-      className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden card-hover"
+      className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden card-hover focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-300 transition-all"
       onClick={() => setExpanded(e => !e)}
       role="button"
       tabIndex={0}
       onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded(x => !x); } }}
     >
       <div className="p-3.5 flex items-center gap-3">
-        {/* Type emoji bubble */}
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0
-          ${tx.type === "income"       ? "bg-green-50" :
-            tx.type === "expense"      ? "bg-red-50" :
-            tx.type === "withdrawal"   ? "bg-amber-50" :
-            tx.type === "transfer-in"  ? "bg-blue-50" :
-            tx.type === "transfer-out" ? "bg-slate-100" : "bg-slate-50"}`}>
-          {meta.emoji}
+        {/* Type icon bubble (flat, modern) */}
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${txTypeBubbleClass(tx.type)}`}>
+          <TxTypeIcon type={tx.type} className="h-5 w-5" />
         </div>
         {/* Description + account */}
         <div className="flex-1 min-w-0">

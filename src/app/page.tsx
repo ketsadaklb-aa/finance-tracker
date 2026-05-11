@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatAmount, formatDate, txAmountClass, txAmountPrefix } from "@/lib/utils";
-import { TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw } from "lucide-react";
+import { TxTypeIcon, txTypeBubbleClass } from "@/components/ui/tx-type-icon";
+import { TrendingUp, TrendingDown, Wallet, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
@@ -138,7 +139,7 @@ export default function DashboardPage() {
 
       {/* Net Worth */}
       <section>
-        <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Net Worth by Currency</h2>
+        <SectionTitle>Net Worth by Currency</SectionTitle>
         {Object.keys(data.netWorth).length === 0 ? (
           <p className="text-slate-400 text-sm">No accounts yet. <Link href="/accounts" className="text-blue-500 underline">Add an account</Link> to get started.</p>
         ) : (
@@ -147,21 +148,26 @@ export default function DashboardPage() {
               const d = data.netWorth[code];
               if (!d) return null;
               return (
-                <Card key={code} className="animate-fade-in card-hover">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold text-slate-500 flex items-center justify-between">
-                      <span>{code}</span><span className="text-slate-300">{d.symbol}</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-1.5">
-                    <div className="flex justify-between text-sm"><span className="text-slate-500">Assets</span><span className="font-medium">{formatAmount(d.balance, d.symbol)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-green-600">AR (owed to you)</span><span className="font-medium text-green-600">+{formatAmount(d.ar, d.symbol)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-red-500">AP (you owe)</span><span className="font-medium text-red-500">-{formatAmount(d.ap, d.symbol)}</span></div>
-                    <div className="border-t border-slate-100 pt-2 flex justify-between">
-                      <span className="font-semibold text-slate-700">Net</span>
-                      <span className={`font-bold text-lg ${d.net >= 0 ? "text-slate-900" : "text-red-600"}`}>{formatAmount(d.net, d.symbol)}</span>
+                <Card key={code} className="animate-fade-in card-glow overflow-hidden relative">
+                  {/* Top blue accent bar */}
+                  <div className="h-1 bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-500" />
+                  <div className="p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">{code}</span>
+                      <span className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold">
+                        {d.symbol}
+                      </span>
                     </div>
-                  </CardContent>
+                    <p className={`text-2xl md:text-3xl font-extrabold tracking-tight ${d.net >= 0 ? "text-slate-900" : "text-rose-600"}`}>
+                      {formatAmount(d.net, d.symbol)}
+                    </p>
+                    <p className="text-[11px] text-slate-400 uppercase tracking-wider font-medium mt-0.5">Net worth</p>
+                    <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+                      <Row label="Assets" value={formatAmount(d.balance, d.symbol)} />
+                      <Row label="AR (owed to you)" value={`+${formatAmount(d.ar, d.symbol)}`} valueClass="text-emerald-600" />
+                      <Row label="AP (you owe)" value={`-${formatAmount(d.ap, d.symbol)}`} valueClass="text-rose-500" />
+                    </div>
+                  </div>
                 </Card>
               );
             })}
@@ -171,25 +177,30 @@ export default function DashboardPage() {
 
       {/* Monthly Chart + Totals with month picker */}
       <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Monthly Summary</h2>
-          <div className="flex items-center gap-1">
-            <button onClick={prevMonth} className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="text-sm font-medium text-slate-700 w-32 text-center">
-              {MONTH_NAMES[month]} {year}
-            </span>
-            <button onClick={nextMonth} disabled={isCurrentMonth}
-              className={`p-1 rounded transition-colors ${isCurrentMonth ? "text-slate-200 cursor-not-allowed" : "hover:bg-slate-100 text-slate-400 hover:text-slate-700"}`}>
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            {!isCurrentMonth && (
-              <button onClick={() => { setMonth(now.getMonth()); setYear(now.getFullYear()); }}
-                className="text-xs text-blue-500 hover:text-blue-700 ml-1 underline">Today</button>
-            )}
-          </div>
-        </div>
+        <SectionTitle
+          right={
+            <div className="flex items-center gap-1 bg-white rounded-xl border border-slate-200 px-1 py-0.5">
+              <button onClick={prevMonth} className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors" aria-label="Previous month">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-sm font-medium text-slate-700 w-28 text-center">
+                {MONTH_NAMES[month]} {year}
+              </span>
+              <button onClick={nextMonth} disabled={isCurrentMonth}
+                className={`p-1 rounded transition-colors ${isCurrentMonth ? "text-slate-200 cursor-not-allowed" : "hover:bg-slate-100 text-slate-500 hover:text-slate-800"}`}
+                aria-label="Next month"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              {!isCurrentMonth && (
+                <button onClick={() => { setMonth(now.getMonth()); setYear(now.getFullYear()); }}
+                  className="text-xs text-blue-600 hover:text-blue-700 ml-1 px-1.5 py-0.5 rounded hover:bg-blue-50 font-medium">Today</button>
+              )}
+            </div>
+          }
+        >
+          Monthly Summary
+        </SectionTitle>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {chartData.length > 0 ? (
@@ -260,7 +271,7 @@ export default function DashboardPage() {
 
       {/* AR / AP Summary */}
       <section>
-        <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">AR / AP Summary</h2>
+        <SectionTitle>AR / AP Summary</SectionTitle>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card>
             <CardHeader className="pb-2">
@@ -307,10 +318,11 @@ export default function DashboardPage() {
 
       {/* Recent Transactions */}
       <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2"><ArrowUpDown className="h-4 w-4" />Recent Transactions</h2>
-          <Link href="/transactions" className="text-xs text-blue-500 hover:underline">View all →</Link>
-        </div>
+        <SectionTitle
+          right={<Link href="/transactions" className="text-xs text-blue-600 hover:text-blue-700 font-medium hover:underline">View all →</Link>}
+        >
+          Recent Transactions
+        </SectionTitle>
         <Card>
           <CardContent className="p-0">
             {data.recentTransactions.length === 0 ? (
@@ -319,6 +331,7 @@ export default function DashboardPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead><tr className="border-b border-slate-100">
+                    <th className="p-4 w-10"></th>
                     <th className="text-left p-4 font-medium text-slate-500">Date</th>
                     <th className="text-left p-4 font-medium text-slate-500">Description</th>
                     <th className="text-left p-4 font-medium text-slate-500">Account</th>
@@ -327,7 +340,12 @@ export default function DashboardPage() {
                   </tr></thead>
                   <tbody>
                     {data.recentTransactions.map((tx) => (
-                      <tr key={tx.id} className="border-b border-slate-50 hover:bg-slate-50">
+                      <tr key={tx.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                        <td className="pl-4 py-3">
+                          <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${txTypeBubbleClass(tx.type)}`}>
+                            <TxTypeIcon type={tx.type} className="h-4 w-4" />
+                          </span>
+                        </td>
                         <td className="p-4 text-slate-500 whitespace-nowrap">{formatDate(tx.date)}</td>
                         <td className="p-4 text-slate-700">{tx.description || "—"}</td>
                         <td className="p-4 text-slate-500">{tx.account.name}</td>
@@ -344,6 +362,28 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </section>
+    </div>
+  );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <h2 className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+        <span className="block w-1 h-3 rounded-full bg-blue-500" aria-hidden="true" />
+        {children}
+      </h2>
+      {right}
+    </div>
+  );
+}
+
+function Row({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-slate-500">{label}</span>
+      <span className={`font-medium ${valueClass ?? "text-slate-700"}`}>{value}</span>
     </div>
   );
 }

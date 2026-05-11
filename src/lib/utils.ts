@@ -36,25 +36,25 @@ export function getStatusColor(status: string): string {
 // ─── Transaction type helpers ─────────────────────────────────────────────
 export type TxType = "income" | "expense" | "transfer" | "withdrawal";
 
-export const TX_TYPES: { value: TxType; label: string; emoji: string }[] = [
-  { value: "income",     label: "Income",     emoji: "💰" },
-  { value: "expense",    label: "Expense",    emoji: "💸" },
-  { value: "transfer",   label: "Transfer",   emoji: "↔️" },
-  { value: "withdrawal", label: "Withdrawal", emoji: "🏧" },
+export const TX_TYPES: { value: TxType; label: string }[] = [
+  { value: "income",     label: "Income"     },
+  { value: "expense",    label: "Expense"    },
+  { value: "transfer",   label: "Transfer"   },
+  { value: "withdrawal", label: "Withdrawal" },
 ];
 
 // Including the two transfer legs that the backend persists
-const ALL_TYPE_META: Record<string, { label: string; emoji: string }> = {
-  "income":       { label: "Income",       emoji: "💰" },
-  "expense":      { label: "Expense",      emoji: "💸" },
-  "transfer":     { label: "Transfer",     emoji: "↔️" },
-  "transfer-out": { label: "Transfer out", emoji: "↗️" },
-  "transfer-in":  { label: "Transfer in",  emoji: "↘️" },
-  "withdrawal":   { label: "Withdrawal",   emoji: "🏧" },
+const ALL_TYPE_META: Record<string, { label: string }> = {
+  "income":       { label: "Income"       },
+  "expense":      { label: "Expense"      },
+  "transfer":     { label: "Transfer"     },
+  "transfer-out": { label: "Transfer out" },
+  "transfer-in":  { label: "Transfer in"  },
+  "withdrawal":   { label: "Withdrawal"   },
 };
 
 export function txTypeMeta(type: string) {
-  return ALL_TYPE_META[type] ?? { label: type, emoji: "•" };
+  return ALL_TYPE_META[type] ?? { label: type };
 }
 
 export function txAmountClass(type: string): string {
