@@ -1,6 +1,7 @@
 import {
   TrendingUp, TrendingDown, ArrowLeftRight,
   Landmark, ArrowUpRight, ArrowDownRight,
+  PlusCircle, MinusCircle,
 } from "lucide-react";
 
 /**
@@ -15,6 +16,8 @@ export function TxTypeIcon({ type, className }: { type: string; className?: stri
     case "transfer-out": return <ArrowUpRight   className={className} />;
     case "transfer-in":  return <ArrowDownRight className={className} />;
     case "withdrawal":   return <Landmark       className={className} />;
+    case "other-in":     return <PlusCircle     className={className} />;
+    case "other-out":    return <MinusCircle    className={className} />;
     default:             return <TrendingDown   className={className} />;
   }
 }
@@ -28,6 +31,8 @@ export function txTypeBubbleClass(type: string): string {
     case "transfer-in":  return "bg-sky-50 text-sky-600 ring-1 ring-sky-100";
     case "transfer-out": return "bg-slate-100 text-slate-600 ring-1 ring-slate-200";
     case "transfer":     return "bg-slate-50 text-slate-500 ring-1 ring-slate-100";
+    case "other-in":     return "bg-teal-50 text-teal-600 ring-1 ring-teal-100";
+    case "other-out":    return "bg-slate-100 text-slate-500 ring-1 ring-slate-200";
     default:             return "bg-slate-50 text-slate-500 ring-1 ring-slate-100";
   }
 }

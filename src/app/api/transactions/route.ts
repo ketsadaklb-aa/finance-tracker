@@ -111,8 +111,8 @@ export async function POST(request: NextRequest) {
       include: { account: true, currency: true, category: true },
     });
 
-    // income → +amount, everything else (expense / withdrawal) → -amount
-    const balanceDelta = type === "income" ? amount : -amount;
+    // income/other-in → +amount; everything else (expense / withdrawal / other-out) → -amount
+    const balanceDelta = (type === "income" || type === "other-in") ? amount : -amount;
 
     await prisma.account.update({
       where: { id: accountId },

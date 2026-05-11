@@ -416,7 +416,7 @@ export default function TransactionsPage() {
             {!editingTransferLeg && (
               <div>
                 <Label className="text-xs text-slate-500">Type</Label>
-                <div className="grid grid-cols-4 gap-2 mt-1.5">
+                <div className="grid grid-cols-3 gap-2 mt-1.5">
                   {TX_TYPES.map(t => {
                     const active = form.type === t.value;
                     return (
@@ -436,6 +436,11 @@ export default function TransactionsPage() {
                     );
                   })}
                 </div>
+                {(form.type === "other-in" || form.type === "other-out") && (
+                  <p className="text-[11px] text-slate-500 mt-2 leading-snug">
+                    For money in/out that isn&apos;t real income or spending — e.g. refunds, asset sales, money you&apos;re holding for someone, loans received/repaid. Affects your balance but excluded from income/expense reports.
+                  </p>
+                )}
               </div>
             )}
 
@@ -503,7 +508,7 @@ export default function TransactionsPage() {
                   <div className="space-y-1.5">
                     <Label className="text-xs text-slate-500">Category</Label>
                     <Select value={form.categoryId} onValueChange={v => setForm(f => ({ ...f, categoryId: v }))}>
-                      <SelectTrigger className="h-11"><SelectValue placeholder={form.type === "withdrawal" ? "Optional" : "Select…"} /></SelectTrigger>
+                      <SelectTrigger className="h-11"><SelectValue placeholder={(form.type === "withdrawal" || form.type === "other-in" || form.type === "other-out") ? "Optional" : "Select…"} /></SelectTrigger>
                       <SelectContent>
                         {filteredCategories.length === 0
                           ? <SelectItem value="__none__" disabled>No categories for {form.type}</SelectItem>

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 
 // Compute the balance delta a transaction applies to its owning account.
 function delta(type: string, amount: number): number {
-  if (type === "income" || type === "transfer-in") return amount;
+  if (type === "income" || type === "transfer-in" || type === "other-in") return amount;
   return -amount;
 }
 

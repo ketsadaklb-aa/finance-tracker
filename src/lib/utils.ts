@@ -34,13 +34,17 @@ export function getStatusColor(status: string): string {
 }
 
 // ─── Transaction type helpers ─────────────────────────────────────────────
-export type TxType = "income" | "expense" | "transfer" | "withdrawal";
+export type TxType =
+  | "income" | "expense" | "transfer" | "withdrawal"
+  | "other-in" | "other-out"; // money that's not really income/expense — refunds, asset sales, holding for someone
 
 export const TX_TYPES: { value: TxType; label: string }[] = [
   { value: "income",     label: "Income"     },
   { value: "expense",    label: "Expense"    },
   { value: "transfer",   label: "Transfer"   },
   { value: "withdrawal", label: "Withdrawal" },
+  { value: "other-in",   label: "Other In"   },
+  { value: "other-out",  label: "Other Out"  },
 ];
 
 // Including the two transfer legs that the backend persists
@@ -51,10 +55,27 @@ const ALL_TYPE_META: Record<string, { label: string }> = {
   "transfer-out": { label: "Transfer out" },
   "transfer-in":  { label: "Transfer in"  },
   "withdrawal":   { label: "Withdrawal"   },
+  "other-in":     { label: "Other In"     },
+  "other-out":    { label: "Other Out"    },
 };
 
 export function txTypeMeta(type: string) {
   return ALL_TYPE_META[type] ?? { label: type };
+}
+
+/** Returns true when this type affects account balance positively */
+export function txIncreasesBalance(type: string): boolean {
+  return type === "income" || type === "transfer-in" || type === "other-in";
+}
+
+/** Returns true when this type counts as "real income" for reports (excludes other-in) */
+export function txIsRealIncome(type: string): boolean {
+  return type === "income";
+}
+
+/** Returns true when this type counts as "real spending" for reports (excludes other-out, withdrawal, transfers) */
+export function txIsRealExpense(type: string): boolean {
+  return type === "expense";
 }
 
 export function txAmountClass(type: string): string {
@@ -65,13 +86,15 @@ export function txAmountClass(type: string): string {
     case "withdrawal":   return "text-amber-600";
     case "transfer-out": return "text-slate-600";
     case "transfer":     return "text-slate-500";
+    case "other-in":     return "text-teal-600";
+    case "other-out":    return "text-slate-500";
     default:             return "text-slate-500";
   }
 }
 
 export function txAmountPrefix(type: string): string {
-  if (type === "income" || type === "transfer-in") return "+";
-  if (type === "expense" || type === "withdrawal" || type === "transfer-out") return "-";
+  if (type === "income" || type === "transfer-in" || type === "other-in") return "+";
+  if (type === "expense" || type === "withdrawal" || type === "transfer-out" || type === "other-out") return "-";
   return "";
 }
 

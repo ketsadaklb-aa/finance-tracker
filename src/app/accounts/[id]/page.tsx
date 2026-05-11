@@ -225,7 +225,7 @@ export default function AccountLedgerPage() {
 }
 
 function delta(tx: { type: string; amount: number }): number {
-  return tx.type === "income" || tx.type === "transfer-in" ? tx.amount : -tx.amount;
+  return (tx.type === "income" || tx.type === "transfer-in" || tx.type === "other-in") ? tx.amount : -tx.amount;
 }
 
 function Chip({
