@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Update account balance based on transaction type
+    // income/transfer-in: +amount; expense/transfer-out/withdrawal: -amount
     const balanceDelta =
       type === "income" || type === "transfer-in" ? amount : -amount;
 

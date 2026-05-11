@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatAmount, formatDate } from "@/lib/utils";
+import { formatAmount, formatDate, txAmountClass, txAmountPrefix } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import {
@@ -30,8 +30,9 @@ interface DashboardData {
     totalByCurrency: Record<string, { symbol: string; remaining: number }>;
   };
   monthlyTotals: {
-    income: Record<string, MonthlyCurrencyData>;
-    expense: Record<string, MonthlyCurrencyData>;
+    income:     Record<string, MonthlyCurrencyData>;
+    expense:    Record<string, MonthlyCurrencyData>;
+    withdrawal?: Record<string, MonthlyCurrencyData>;
   };
 }
 
@@ -331,11 +332,8 @@ export default function DashboardPage() {
                         <td className="p-4 text-slate-700">{tx.description || "—"}</td>
                         <td className="p-4 text-slate-500">{tx.account.name}</td>
                         <td className="p-4">{tx.category && <Badge variant="secondary">{tx.category.name}</Badge>}</td>
-                        <td className={`p-4 text-right font-medium whitespace-nowrap ${
-                          tx.type === "income" ? "text-green-600" : tx.type === "expense" ? "text-red-500" : "text-slate-500"
-                        }`}>
-                          {tx.type === "income" ? "+" : tx.type === "expense" ? "−" : ""}
-                          {formatAmount(tx.amount, tx.currency.symbol)}
+                        <td className={`p-4 text-right font-medium whitespace-nowrap ${txAmountClass(tx.type)}`}>
+                          {txAmountPrefix(tx.type)}{formatAmount(tx.amount, tx.currency.symbol)}
                         </td>
                       </tr>
                     ))}

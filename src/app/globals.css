@@ -46,6 +46,49 @@ body {
   from { opacity: 0; transform: translateX(-8px); }
   to   { opacity: 1; transform: translateX(0); }
 }
+
+/* Bottom-sheet & modal animations */
+@keyframes sheetSlideUp     { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes sheetSlideDown   { from { transform: translateY(0); } to { transform: translateY(100%); } }
+@keyframes overlayFadeIn    { from { opacity: 0; } to { opacity: 1; } }
+@keyframes overlayFadeOut   { from { opacity: 1; } to { opacity: 0; } }
+@keyframes modalZoomIn      { from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes modalZoomOut     { from { opacity: 1; transform: translate(-50%, -50%) scale(1); } to { opacity: 0; transform: translate(-50%, -50%) scale(0.96); } }
+
+.sheet-overlay[data-state="open"]  { animation: overlayFadeIn  0.2s ease-out; }
+.sheet-overlay[data-state="closed"]{ animation: overlayFadeOut 0.18s ease-in; }
+.sheet-mobile[data-state="open"]   { animation: sheetSlideUp   0.28s cubic-bezier(0.32, 0.72, 0, 1); }
+.sheet-mobile[data-state="closed"] { animation: sheetSlideDown 0.22s cubic-bezier(0.4, 0, 1, 1); }
+
+@media (min-width: 640px) {
+  .sheet-mobile[data-state="open"]   { animation: modalZoomIn  0.18s ease-out; }
+  .sheet-mobile[data-state="closed"] { animation: modalZoomOut 0.15s ease-in; }
+}
+
+/* Toast slide-in for undo notifications */
+@keyframes toastSlideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-toast { animation: toastSlideUp 0.25s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+/* Tap-feedback ripple */
+@keyframes tapPulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+.tap-feedback:active { animation: tapPulse 0.15s ease-out; }
+
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 @keyframes scaleIn {
   from { opacity: 0; transform: scale(0.97); }
   to   { opacity: 1; transform: scale(1); }

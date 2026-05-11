@@ -126,19 +126,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // --- Monthly Totals ---
+    // --- Monthly Totals (income/expense/withdrawal — withdrawal kept separate so it doesn't pollute spending) ---
     const monthlyTransactions = await prisma.transaction.findMany({
-      where: { ...txAccountFilter, date: { gte: startOfMonth, lte: endOfMonth }, type: { in: ["income", "expense"] } },
+      where: { ...txAccountFilter, date: { gte: startOfMonth, lte: endOfMonth }, type: { in: ["income", "expense", "withdrawal"] } },
       select: { type: true, amount: true, currencyId: true },
     });
     const monthlyTotals: {
-      income: Record<string, { symbol: string; total: number }>;
-      expense: Record<string, { symbol: string; total: number }>;
-    } = { income: {}, expense: {} };
+      income:     Record<string, { symbol: string; total: number }>;
+      expense:    Record<string, { symbol: string; total: number }>;
+      withdrawal: Record<string, { symbol: string; total: number }>;
+    } = { income: {}, expense: {}, withdrawal: {} };
     for (const tx of monthlyTransactions) {
       const currency = currencyMap.get(tx.currencyId);
       if (!currency) continue;
-      const bucket = tx.type === "income" ? monthlyTotals.income : monthlyTotals.expense;
+      const bucket =
+        tx.type === "income"     ? monthlyTotals.income
+      : tx.type === "withdrawal" ? monthlyTotals.withdrawal
+      :                            monthlyTotals.expense;
       if (!bucket[currency.code]) bucket[currency.code] = { symbol: currency.symbol, total: 0 };
       bucket[currency.code].total += tx.amount;
     }

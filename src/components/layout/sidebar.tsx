@@ -125,6 +125,13 @@ export function Sidebar() {
     fetch("/api/auth/me").then(r => r.ok ? r.json() : null).then(d => { if (d) setUser(d); });
   }, []);
 
+  // Listen for bottom-nav "More" button to open the drawer
+  useEffect(() => {
+    const open = () => setMobileOpen(true);
+    window.addEventListener("openMobileNav", open);
+    return () => window.removeEventListener("openMobileNav", open);
+  }, []);
+
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
