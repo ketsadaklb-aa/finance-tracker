@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, ArrowUpDown, Users,
-  BookOpen, Wallet, Upload, DollarSign, Menu, X, LogOut, Shield,
+  BookOpen, Wallet, DollarSign, Menu, X, LogOut, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -14,7 +14,6 @@ const adminNav = [
   { href: "/transactions", label: "Transactions",      icon: ArrowUpDown },
   { href: "/contacts",     label: "Contacts",          icon: Users },
   { href: "/ledger",       label: "AR / AP Ledger",    icon: BookOpen },
-  { href: "/import",       label: "Import Statement",  icon: Upload },
 ];
 
 const memberNav = [

@@ -4,7 +4,7 @@ const SESSION_COOKIE = "ft_session";
 const PUBLIC_PATHS = ["/login", "/api/auth/login"];
 
 // Pages members are NOT allowed to visit (redirect to /ledger)
-const MEMBER_BLOCKED_PAGES = ["/", "/accounts", "/transactions", "/contacts", "/import", "/admin"];
+const MEMBER_BLOCKED_PAGES = ["/", "/accounts", "/transactions", "/contacts", "/admin"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
