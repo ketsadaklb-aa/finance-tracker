@@ -26,6 +26,8 @@ export async function GET(request: NextRequest) {
 
     const startOfMonth = new Date(year, month, 1);
     const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59);
+    const startOfPrevMonth = new Date(year, month - 1, 1);
+    const endOfPrevMonth = new Date(year, month, 0, 23, 59, 59);
 
     const currencies = await prisma.currency.findMany();
     const currencyMap = new Map(currencies.map((c) => [c.id, c]));
@@ -147,7 +149,20 @@ export async function GET(request: NextRequest) {
       bucket[currency.code].total += tx.amount;
     }
 
-    return NextResponse.json({ netWorth, recentTransactions, arSummary, apSummary, monthlyTotals });
+    // --- Previous Month Totals (for vs-last-month delta) ---
+    const prevMonthTx = await prisma.transaction.findMany({
+      where: { ...txAccountFilter, date: { gte: startOfPrevMonth, lte: endOfPrevMonth }, type: { in: ["income", "expense"] } },
+      select: { type: true, amount: true, currencyId: true },
+    });
+    const prevMonthTotals: { income: Record<string, number>; expense: Record<string, number> } = { income: {}, expense: {} };
+    for (const tx of prevMonthTx) {
+      const currency = currencyMap.get(tx.currencyId);
+      if (!currency) continue;
+      const bucket = tx.type === "income" ? prevMonthTotals.income : prevMonthTotals.expense;
+      bucket[currency.code] = (bucket[currency.code] ?? 0) + tx.amount;
+    }
+
+    return NextResponse.json({ netWorth, recentTransactions, arSummary, apSummary, monthlyTotals, prevMonthTotals });
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch dashboard data" }, { status: 500 });
   }
