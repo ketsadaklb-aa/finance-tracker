@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         currency: true,
         category: true,
       },
-      orderBy: { date: "desc" },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       take: limit,
     });
 

@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
     const recentTransactions = await prisma.transaction.findMany({
       where: txAccountFilter,
       include: { account: true, currency: true, category: true },
-      orderBy: { date: "desc" },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       take: 10,
     });
 

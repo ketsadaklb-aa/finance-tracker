@@ -25,6 +25,8 @@ interface Category { id: string; name: string; type: string }
 interface Transaction {
   id: string; type: string; amount: number; date: string; description: string | null; source: string;
   attachmentUrl: string | null;
+  createdAt: string; updatedAt: string;
+  transferGroupId: string | null;
   currency: Currency; account: Account; category: Category | null;
 }
 
@@ -937,8 +939,14 @@ function TxCard({
         )}
         {/* Description + account · category */}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-800 truncate text-[15px] leading-tight">
-            {tx.description || meta.label}
+          <p className="font-semibold text-slate-800 truncate text-[15px] leading-tight flex items-center gap-1.5">
+            <span className="truncate">{tx.description || meta.label}</span>
+            {tx.source === "import" && (
+              <span className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0">imp</span>
+            )}
+            {wasEdited(tx) && (
+              <span className="text-[9px] uppercase tracking-wider font-medium text-slate-400 shrink-0">edited</span>
+            )}
           </p>
           <p className="text-xs text-slate-500 truncate mt-1">
             {accountClean}
@@ -950,50 +958,137 @@ function TxCard({
           <p className={`font-bold text-base whitespace-nowrap tracking-tight tabular-nums ${txAmountClass(tx.type)}`}>
             {txAmountPrefix(tx.type)}{formatAmount(tx.amount, tx.currency.symbol)}
           </p>
-          {tx.attachmentUrl && (
-            <span className="inline-flex items-center text-blue-400 mt-0.5">
-              <Paperclip className="h-3 w-3" />
-            </span>
-          )}
+          <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">{timeOfDay(tx.createdAt)}</p>
         </div>
       </div>
-      {/* Expanded actions — hidden in select mode */}
+
+      {/* Expanded details + actions — hidden in select mode */}
       {expanded && !selectMode && (
-        <div className="border-t border-slate-100 grid grid-cols-3 divide-x divide-slate-100 animate-fade-in">
-          <button
-            onClick={e => { e.stopPropagation(); onEdit(); }}
-            className="py-2.5 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
-          >
-            <Pencil className="h-3.5 w-3.5" /> Edit
-          </button>
-          {onDuplicate ? (
+        <div className="border-t border-slate-100 animate-fade-in">
+          {/* Detail rows */}
+          <dl className="px-3.5 py-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+            {tx.description && tx.description.length > 40 && (
+              <>
+                <dt className="text-slate-400 font-medium uppercase tracking-wider text-[10px] pt-0.5">Full description</dt>
+                <dd className="text-slate-700 whitespace-pre-wrap break-words">{tx.description}</dd>
+              </>
+            )}
+            <dt className="text-slate-400 font-medium uppercase tracking-wider text-[10px] pt-0.5">Type</dt>
+            <dd className="text-slate-700 font-medium">{meta.label}</dd>
+
+            <dt className="text-slate-400 font-medium uppercase tracking-wider text-[10px] pt-0.5">Account</dt>
+            <dd className="text-slate-700 font-medium">{tx.account.name}</dd>
+
+            {tx.category && (
+              <>
+                <dt className="text-slate-400 font-medium uppercase tracking-wider text-[10px] pt-0.5">Category</dt>
+                <dd className="text-slate-700 font-medium">{tx.category.name}</dd>
+              </>
+            )}
+
+            <dt className="text-slate-400 font-medium uppercase tracking-wider text-[10px] pt-0.5">Date · Time</dt>
+            <dd className="text-slate-700 font-medium">{fullDateTime(tx.date, tx.createdAt)}</dd>
+
+            <dt className="text-slate-400 font-medium uppercase tracking-wider text-[10px] pt-0.5">Source</dt>
+            <dd className="text-slate-700 font-medium capitalize">{tx.source}</dd>
+
+            {tx.transferGroupId && (
+              <>
+                <dt className="text-slate-400 font-medium uppercase tracking-wider text-[10px] pt-0.5">Transfer pair</dt>
+                <dd className="text-slate-700 font-medium">Linked to another leg (deleting will remove both)</dd>
+              </>
+            )}
+
+            {wasEdited(tx) && (
+              <>
+                <dt className="text-slate-400 font-medium uppercase tracking-wider text-[10px] pt-0.5">Last edited</dt>
+                <dd className="text-slate-500 font-medium">{relativeFromNow(tx.updatedAt)}</dd>
+              </>
+            )}
+          </dl>
+
+          {/* Receipt preview — image or paperclip link */}
+          {tx.attachmentUrl && (
+            <div className="px-3.5 pb-3">
+              <a
+                href={tx.attachmentUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="block rounded-lg border border-slate-200 overflow-hidden hover:border-blue-300 hover:shadow-sm transition-all"
+              >
+                {isImageUrl(tx.attachmentUrl) ? (
+                  // Next/Image would need allowed remote hosts; safer to use plain img for arbitrary URLs
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={tx.attachmentUrl} alt="Receipt" className="w-full max-h-56 object-contain bg-slate-50" />
+                ) : (
+                  <div className="px-3 py-2.5 bg-slate-50 text-sm text-slate-600 flex items-center gap-2">
+                    <Paperclip className="h-4 w-4 text-blue-500" />
+                    View attached file
+                  </div>
+                )}
+              </a>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="border-t border-slate-100 grid grid-cols-3 divide-x divide-slate-100">
             <button
-              onClick={e => { e.stopPropagation(); onDuplicate(); }}
-              className="py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
+              onClick={e => { e.stopPropagation(); onEdit(); }}
+              className="py-2.5 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
             >
-              <Copy className="h-3.5 w-3.5" /> Duplicate
+              <Pencil className="h-3.5 w-3.5" /> Edit
             </button>
-          ) : tx.attachmentUrl ? (
-            <a
-              href={tx.attachmentUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
+            {onDuplicate ? (
+              <button
+                onClick={e => { e.stopPropagation(); onDuplicate(); }}
+                className="py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
+              >
+                <Copy className="h-3.5 w-3.5" /> Duplicate
+              </button>
+            ) : <span />}
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(); }}
+              className="py-2.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
             >
-              <Paperclip className="h-3.5 w-3.5" /> Receipt
-            </a>
-          ) : <span />}
-          <button
-            onClick={e => { e.stopPropagation(); onDelete(); }}
-            className="py-2.5 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center gap-1.5 tap-feedback"
-          >
-            <Trash2 className="h-3.5 w-3.5" /> Delete
-          </button>
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </button>
+          </div>
         </div>
       )}
     </div>
   );
+}
+
+// ─── Date/time helpers (used by TxCard) ─────────────────────────────────
+function timeOfDay(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+function fullDateTime(dateIso: string, createdAtIso: string): string {
+  const date = new Date(dateIso);
+  const created = new Date(createdAtIso);
+  const dateStr = date.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  const timeStr = created.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  return `${dateStr} · ${timeStr}`;
+}
+function relativeFromNow(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1)  return "just now";
+  if (mins < 60) return `${mins} min${mins === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hr${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30)  return `${days} day${days === 1 ? "" : "s"} ago`;
+  return new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+}
+function wasEdited(tx: { createdAt: string; updatedAt: string }): boolean {
+  // Consider "edited" only if updated > 1 minute after creation
+  return new Date(tx.updatedAt).getTime() - new Date(tx.createdAt).getTime() > 60_000;
+}
+function isImageUrl(url: string): boolean {
+  return /\.(jpe?g|png|gif|webp|avif)(\?.*)?$/i.test(url);
 }
 
 function CountChip({ color, count, label }: { color: "emerald" | "rose" | "sky" | "amber" | "teal"; count: number; label: string }) {
