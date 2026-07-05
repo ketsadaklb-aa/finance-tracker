@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE = "ft_session";
-const PUBLIC_PATHS = ["/login", "/api/auth/login"];
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/share", "/api/share"];
 
 // Pages members are NOT allowed to visit (redirect to /ledger)
 const MEMBER_BLOCKED_PAGES = ["/", "/accounts", "/transactions", "/contacts", "/admin"];

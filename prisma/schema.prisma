@@ -92,6 +92,11 @@ model Contact {
   phone String?
   note  String?
 
+  // Public share link (whole-ledger, PIN-protected). Null token = not shared.
+  shareToken   String?   @unique
+  sharePinHash String?
+  sharedAt     DateTime?
+
   receivables   Receivable[]
   payables      Payable[]
   accessGrants  ContactAccess[]

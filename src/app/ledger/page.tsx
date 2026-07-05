@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/toast";
 import {
   Plus, ChevronDown, ChevronUp, Pencil, Trash2, AlertCircle,
   CheckCircle2, X, Paperclip, Upload, TrendingUp, TrendingDown, Users, FileDown, Loader2,
+  Share2, Copy, Check, Link2, ShieldOff,
 } from "lucide-react";
 
 interface Currency { id: string; code: string; symbol: string }
@@ -27,6 +28,10 @@ type APItem = ARItem;
 
 const statusVariant: Record<string, "destructive" | "warning" | "success"> = {
   open: "destructive", partial: "warning", settled: "success",
+};
+
+const statusLabel: Record<string, string> = {
+  open: "Open", partial: "Partial", settled: "Fully paid",
 };
 const emptyForm = (contactId = "") => ({
   contactId, currencyId: "", originalAmount: "", description: "",
@@ -98,9 +103,13 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     col_paid:   "ຈ່າຍແລ້ວ",
     col_recv:   "ຮັບແລ້ວ",
     col_rem:    "ຍັງຄ້າງ",
+    col_ccy:    "ສະກຸນ",
+    summary_ar: (n: string) => `${n} ຄ້າງທ່ານ`,
+    summary_ap: (n: string) => `ທ່ານຄ້າງ ${n}`,
+    none:       "—",
     s_open:     "ຄ້າງ",
     s_partial:  "ບາງສ່ວນ",
-    s_settled:  "ສຳເລັດ",
+    s_settled:  "ຈ່າຍຄົບ",
     due:        "ກຳນົດ:",
     overdue:    "ເກີນກຳນົດ",
     payment:    "ຊຳລະ",
@@ -120,9 +129,13 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     col_paid:   "Paid",
     col_recv:   "Received",
     col_rem:    "Remaining",
+    col_ccy:    "CCY",
+    summary_ar: (n: string) => `${n} owes you`,
+    summary_ap: (n: string) => `You owe ${n}`,
+    none:       "—",
     s_open:     "OPEN",
     s_partial:  "PARTIAL",
-    s_settled:  "SETTLED",
+    s_settled:  "FULLY PAID",
     due:        "Due:",
     overdue:    "OVERDUE",
     payment:    "Payment",
@@ -159,22 +172,25 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
         ? `<br><small class="${overdue ? "due-late" : "due-ok"}">${T.due} ${fd(item.dueDate)}${overdue ? " !" : ""}</small>`
         : "";
 
-      rows += `<tbody class="record">
+      const paidCls = item.status === "settled" ? " paid-off" : "";
+      rows += `<tbody class="record${paidCls}">
         <tr>
           <td class="desc">${esc(desc)}</td>
           <td>${fd(item.agreementDate)}${dueHtml}</td>
           <td class="status ${sCls}">${sLabel}</td>
+          <td class="ccy">${ccy}</td>
           <td class="num muted">${num(item.originalAmount)}</td>
           <td class="num muted">${num(item.paidAmount)}</td>
-          <td class="num ${rCls}">${num(item.remainingAmount)} ${ccy}</td>
+          <td class="num ${rCls}">${num(item.remainingAmount)}</td>
         </tr>`;
       for (const p of item.payments) {
         const note = p.note ? "  " + p.note.substring(0, 28) : "";
         const pCls = isAR ? "pamt-ar" : "pamt-ap";
         rows += `<tr class="pay-row">
           <td colspan="3" class="pay-desc">└ ${T.payment}  ${fd(p.date)}${esc(note)}</td>
+          <td class="ccy">${p.currency.code}</td>
           <td></td>
-          <td class="num ${pCls}">${num(p.amount)} ${p.currency.code}</td>
+          <td class="num ${pCls}">${num(p.amount)}</td>
           <td></td>
         </tr>`;
       }
@@ -188,27 +204,50 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
 
     const totRow = Object.entries(totals).map(([code, t]) => `
       <tr class="totals-row">
-        <td colspan="3"><strong>${T.total} (${code})</strong></td>
+        <td colspan="3"><strong>${T.total}</strong></td>
+        <td class="ccy"><strong>${code}</strong></td>
         <td class="num muted">${num(t.orig)}</td>
         <td class="num muted">${num(t.paid)}</td>
-        <td class="num ${isAR ? "rem-ar" : "rem-ap"}">${num(t.rem)} ${code}</td>
+        <td class="num ${isAR ? "rem-ar" : "rem-ap"}">${num(t.rem)}</td>
       </tr>`).join("");
 
     return `
       <h2 class="sec-title">${esc(title)}</h2>
       <table>
         <thead><tr>
-          <th style="width:32%">${T.col_desc}</th>
-          <th style="width:15%">${T.col_agreed}</th>
-          <th style="width:12%">${T.col_status}</th>
+          <th style="width:28%">${T.col_desc}</th>
+          <th style="width:13%">${T.col_agreed}</th>
+          <th style="width:11%">${T.col_status}</th>
+          <th style="width:7%">${T.col_ccy}</th>
           <th class="num" style="width:13%">${T.col_orig}</th>
           <th class="num" style="width:14%">${isAR ? T.col_recv : T.col_paid}</th>
           <th class="num" style="width:14%">${T.col_rem}</th>
         </tr></thead>
         ${rows}
-        <tfoot><tr class="tfoot-gap"><td colspan="6"></td></tr>${totRow}</tfoot>
+        <tfoot><tr class="tfoot-gap"><td colspan="7"></td></tr>${totRow}</tfoot>
       </table>`;
   };
+
+  // Outstanding balance per currency (skip fully-paid rows)
+  const sumRemaining = (items: ARItem[]) => {
+    const m: Record<string, number> = {};
+    for (const it of items) {
+      if (it.remainingAmount <= 0) continue;
+      m[it.currency.code] = (m[it.currency.code] ?? 0) + it.remainingAmount;
+    }
+    return m;
+  };
+  const fmtRem = (m: Record<string, number>) => {
+    const e = Object.entries(m);
+    return e.length ? e.map(([c, v]) => `${num(v)} ${c}`).join("&nbsp;&nbsp;·&nbsp;&nbsp;") : T.none;
+  };
+  const arRem = fmtRem(sumRemaining(ar));
+  const apRem = fmtRem(sumRemaining(ap));
+  const summaryHTML = `
+    <div class="summary">
+      <div class="sum-card ar"><span class="sum-lbl">${esc(T.summary_ar(contact.name))}</span><span class="sum-val ar">${arRem}</span></div>
+      <div class="sum-card ap"><span class="sum-lbl">${esc(T.summary_ap(contact.name))}</span><span class="sum-val ap">${apRem}</span></div>
+    </div>`;
 
   // Returns styled body HTML (no <html>/<head>) — rendered into a hidden div by downloadContactPDF
   return `
@@ -223,7 +262,22 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     .date-lbl{font-size:9px;color:#94a3b8}
     .date-val{font-size:16px;font-weight:700;color:#fff;white-space:nowrap}
     .hdr h1{font-size:22px;font-weight:700;line-height:1.2}
-    .sec-title{font-size:12px;font-weight:700;margin:14px 0 4px;padding-bottom:4px;border-bottom:1px solid #1e293b}
+    .summary{display:flex;gap:10px;margin:6px 0 4px}
+    .sum-card{flex:1;border-radius:6px;padding:8px 12px;display:flex;flex-direction:column;gap:3px;border:1px solid #e2e8f0;border-left-width:3px}
+    .sum-card.ar{background:#eff6ff;border-color:#dbeafe;border-left-color:#2563eb}
+    .sum-card.ap{background:#fef2f2;border-color:#fee2e2;border-left-color:#dc2626}
+    .sum-lbl{font-size:9px;color:#64748b;letter-spacing:0.3px;text-transform:uppercase}
+    .sum-val{font-size:14px;font-weight:700;white-space:nowrap}
+    .sum-val.ar{color:#2563eb}
+    .sum-val.ap{color:#b91c1c}
+    .section{margin-top:18px}
+    .sec-title{font-size:12px;font-weight:700;margin:0 0 6px;padding:6px 10px;border-radius:5px;border-left:4px solid}
+    .sec-ar .sec-title{color:#1e40af;background:#eff6ff;border-left-color:#2563eb}
+    .sec-ap .sec-title{color:#991b1b;background:#fef2f2;border-left-color:#dc2626}
+    .sec-ar thead tr{background:#eff6ff}
+    .sec-ap thead tr{background:#fef2f2}
+    .sec-ar thead th{color:#3b5fa4}
+    .sec-ap thead th{color:#a4535b}
     .empty{color:#94a3b8;font-size:10px;padding:6px 0}
     table{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:10px}
     thead tr{background:#f1f5f9}
@@ -235,6 +289,11 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     .muted{color:#64748b}
     .status{font-weight:700}
     .open{color:#64748b}.partial{color:#9a3412}.settled{color:#15803d}.overdue{color:#dc2626}
+    .ccy{color:#64748b;font-weight:700;font-size:9px}
+    .paid-off .desc{color:#94a3b8;font-weight:400}
+    .paid-off td.muted{color:#cbd5e1}
+    .paid-off .ccy{color:#cbd5e1}
+    .paid-off .rem-ok{color:#86efac}
     .rem-ar{font-weight:700;color:#2563eb;text-align:right}
     .rem-ap{font-weight:700;color:#b91c1c;text-align:right}
     .rem-ok{font-weight:700;color:#15803d;text-align:right}
@@ -245,6 +304,8 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     .due-ok{color:#94a3b8;font-size:9px}.due-late{color:#dc2626;font-size:9px}
     .tfoot-gap td{height:8px;background:#fff;border:none;padding:0}
     tfoot .totals-row td{background:#e8edf4;font-size:10.5px;font-weight:700;padding:6px 3px;border-top:2.5px solid #1e293b;border-bottom:1.5px solid #94a3b8}
+    .sec-ar tfoot .totals-row td{background:#eff6ff;border-top-color:#2563eb}
+    .sec-ap tfoot .totals-row td{background:#fef2f2;border-top-color:#dc2626}
     .footer{font-size:9px;color:#94a3b8;display:flex;justify-content:space-between;margin-top:12px;padding-top:4px;border-top:1px solid #e2e8f0}
   </style>
   <div class="wrap">
@@ -258,8 +319,9 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
       </div>
       <h1>${esc(contact.name)}</h1>
     </div>
-    ${sectionHTML(ar, true)}
-    ${sectionHTML(ap, false)}
+    ${summaryHTML}
+    <div class="section sec-ar">${sectionHTML(ar, true)}</div>
+    <div class="section sec-ap">${sectionHTML(ap, false)}</div>
     <div class="footer"><span>${T.footer}</span></div>
   </div>`;
 }
@@ -472,7 +534,7 @@ function ItemsTable({
                       </div>
                       <span className="text-xs text-slate-400">{Math.round(pct)}%</span>
                     </td>
-                    <td className="py-2 pr-3"><Badge variant={statusVariant[r.status]}>{r.status}</Badge></td>
+                    <td className="py-2 pr-3"><Badge variant={statusVariant[r.status]}>{statusLabel[r.status] ?? r.status}</Badge></td>
                     <td className={`py-2 pr-3 text-xs ${overdue ? "text-red-500 font-medium" : "text-slate-400"}`}>
                       {overdue && <AlertCircle className="h-3 w-3 inline mr-1" />}
                       {r.dueDate ? getAgingLabel(r.dueDate) : "—"}
@@ -605,6 +667,14 @@ export default function LedgerPage() {
   const [editRecord, setEditRecord] = useState<ARItem | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [recordFile, setRecordFile] = useState<File | null>(null);
+  const [discardConfirm, setDiscardConfirm] = useState(false);
+
+  // Public share-link dialog
+  const [shareContact, setShareContact] = useState<Contact | null>(null);
+  const [shareStatus, setShareStatus] = useState<{ enabled: boolean; token: string | null } | null>(null);
+  const [sharePin, setSharePin] = useState("");
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: "ar" | "ap" } | null>(null);
   const [payDialog, setPayDialog] = useState<{ item: ARItem; type: "ar" | "ap" } | null>(null);
   const [payForm, setPayForm] = useState({ amount: "", date: new Date().toISOString().slice(0, 10), note: "" });
@@ -705,6 +775,62 @@ export default function LedgerPage() {
     setDialogOpen(true);
   }
 
+  // Has the user entered anything worth protecting from an accidental close?
+  function formDirty() {
+    return !!(
+      form.originalAmount || form.description || form.note ||
+      form.dueDate || form.currencyId || recordFile || editRecord
+    );
+  }
+
+  // Called when the user tries to dismiss via outside-click / Escape
+  function requestClose() {
+    if (formDirty()) setDiscardConfirm(true);
+    else setDialogOpen(false);
+  }
+
+  // ── Public share link ────────────────────────────────────────────────────────
+  const shareUrl = shareStatus?.token ? `${typeof window !== "undefined" ? window.location.origin : ""}/share/${shareStatus.token}` : "";
+
+  async function openShare(contact: Contact) {
+    setShareContact(contact);
+    setShareStatus(null);
+    setSharePin("");
+    setShareCopied(false);
+    const res = await fetch(`/api/contacts/${contact.id}/share`);
+    if (res.ok) setShareStatus(await res.json());
+    else { toast("Couldn't load share status", "error"); setShareStatus({ enabled: false, token: null }); }
+  }
+
+  async function enableShare() {
+    if (!shareContact) return;
+    if (!/^\d{4,6}$/.test(sharePin)) { toast("PIN must be 4–6 digits", "error"); return; }
+    setShareBusy(true);
+    const res = await fetch(`/api/contacts/${shareContact.id}/share`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: sharePin }),
+    });
+    setShareBusy(false);
+    if (res.ok) { setShareStatus(await res.json()); toast("Share link ready"); }
+    else toast("Failed to create link", "error");
+  }
+
+  async function revokeShare() {
+    if (!shareContact) return;
+    setShareBusy(true);
+    const res = await fetch(`/api/contacts/${shareContact.id}/share`, { method: "DELETE" });
+    setShareBusy(false);
+    if (res.ok) { setShareStatus({ enabled: false, token: null }); setSharePin(""); toast("Link revoked"); }
+    else toast("Failed to revoke", "error");
+  }
+
+  async function copyShareLink() {
+    if (!shareUrl) return;
+    try { await navigator.clipboard.writeText(shareUrl); setShareCopied(true); setTimeout(() => setShareCopied(false), 1800); }
+    catch { toast("Copy failed — select the link manually", "error"); }
+  }
+
   async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
@@ -765,7 +891,7 @@ export default function LedgerPage() {
       const updated = await res.json();
       if (type === "ar") setReceivables(prev => prev.map(x => x.id === item.id ? updated : x));
       else setPayables(prev => prev.map(x => x.id === item.id ? updated : x));
-      toast("Settled");
+      toast("Marked fully paid");
       setSettleDialog(null); setSettleFile(null);
     } else {
       const d = await res.json(); toast(d.error ?? "Failed", "error");
@@ -977,12 +1103,20 @@ export default function LedgerPage() {
                           </span>
                         )}
                         {arOpen === 0 && apOpen === 0 && (
-                          <span className="text-xs text-slate-400">All settled</span>
+                          <span className="text-xs text-slate-400">All paid</span>
                         )}
                       </div>
                     </div>
                   </button>
                   <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                    <button
+                      onClick={() => openShare(contact)}
+                      title="Get shareable link"
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-emerald-600 hover:bg-emerald-50 transition-colors border border-emerald-200"
+                    >
+                      <Share2 className="h-3.5 w-3.5" />
+                      Share
+                    </button>
                     <button
                       onClick={() => downloadContactPDF(contact, ar, ap, "en")}
                       title="Download PDF (English)"
@@ -1079,9 +1213,26 @@ export default function LedgerPage() {
       )}
 
       {/* Add / Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={v => { setDialogOpen(v); if (!v) { setEditRecord(null); setForm(emptyForm()); setRecordFile(null); } }}>
+      <Dialog open={dialogOpen} onOpenChange={v => { setDialogOpen(v); if (!v) { setEditRecord(null); setForm(emptyForm()); setRecordFile(null); setDiscardConfirm(false); } }}>
         {/* flex flex-col + overflow-hidden so only the body scrolls, footer stays fixed */}
-        <DialogContent className="flex flex-col overflow-hidden p-0 gap-0">
+        <DialogContent className="flex flex-col overflow-hidden p-0 gap-0"
+          onInteractOutside={e => { e.preventDefault(); requestClose(); }}
+          onEscapeKeyDown={e => { e.preventDefault(); requestClose(); }}>
+          {/* Discard-confirm overlay — blocks accidental data loss on outside-click/Escape */}
+          {discardConfirm && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-sm rounded-xl">
+              <div className="bg-white border border-slate-200 rounded-xl shadow-xl p-5 w-[280px] text-center space-y-3">
+                <p className="text-sm font-semibold text-slate-800">Discard unsaved changes?</p>
+                <p className="text-xs text-slate-500">The details you entered will be lost.</p>
+                <div className="flex gap-2 pt-1">
+                  <Button type="button" variant="outline" className="flex-1"
+                    onClick={() => setDiscardConfirm(false)}>Keep editing</Button>
+                  <Button type="button" variant="destructive" className="flex-1"
+                    onClick={() => { setDiscardConfirm(false); setDialogOpen(false); }}>Discard</Button>
+                </div>
+              </div>
+            </div>
+          )}
           {/* Fixed header */}
           <DialogHeader className="px-5 pt-5 pb-4 border-b border-slate-100 shrink-0">
             <DialogTitle>
@@ -1200,6 +1351,76 @@ export default function LedgerPage() {
               </Button>
             </DialogFooter>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Share link dialog */}
+      <Dialog open={!!shareContact} onOpenChange={v => { if (!v) setShareContact(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Share2 className="h-4 w-4 text-emerald-600" /> Share {shareContact?.name}&apos;s statement
+            </DialogTitle>
+          </DialogHeader>
+
+          {!shareStatus ? (
+            <div className="py-6 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-slate-300" /></div>
+          ) : shareStatus.enabled ? (
+            <div className="space-y-4">
+              <p className="text-sm text-slate-500">
+                Anyone with this link <span className="font-medium text-slate-700">and the PIN</span> can view this contact&apos;s
+                receivables, payables, and attachments — read-only.
+              </p>
+              <div className="space-y-1.5">
+                <Label>Public link</Label>
+                <div className="flex gap-2">
+                  <Input readOnly value={shareUrl} onFocus={e => e.target.select()} className="text-xs bg-slate-50" />
+                  <Button type="button" variant="outline" onClick={copyShareLink} className="shrink-0">
+                    {shareCopied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2.5 text-xs text-amber-800">
+                Share the <strong>PIN separately</strong> (e.g. by message) — never in the same place as the link.
+                Forgot it? Set a new one below.
+              </div>
+              <div className="space-y-1.5">
+                <Label>Reset PIN (optional)</Label>
+                <div className="flex gap-2">
+                  <Input inputMode="numeric" maxLength={6} placeholder="New 4–6 digit PIN" value={sharePin}
+                    onChange={e => setSharePin(e.target.value.replace(/\D/g, ""))} />
+                  <Button type="button" onClick={enableShare} disabled={shareBusy || sharePin.length < 4} className="shrink-0">
+                    {shareBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Update"}
+                  </Button>
+                </div>
+              </div>
+              <DialogFooter className="border-t border-slate-100 pt-4">
+                <Button type="button" variant="outline" onClick={() => setShareContact(null)}>Done</Button>
+                <Button type="button" variant="destructive" onClick={revokeShare} disabled={shareBusy}>
+                  <ShieldOff className="h-4 w-4 mr-1.5" /> Revoke link
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-slate-500">
+                Create a private link so <span className="font-medium text-slate-700">{shareContact?.name}</span> can view their
+                statement and attachments online. Protect it with a PIN you&apos;ll share separately.
+              </p>
+              <div className="space-y-1.5">
+                <Label>Set a PIN (4–6 digits)</Label>
+                <Input inputMode="numeric" maxLength={6} placeholder="e.g. 4821" value={sharePin} autoFocus
+                  onChange={e => setSharePin(e.target.value.replace(/\D/g, ""))} />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setShareContact(null)}>Cancel</Button>
+                <Button type="button" onClick={enableShare} disabled={shareBusy || sharePin.length < 4}>
+                  {shareBusy ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Link2 className="h-4 w-4 mr-1.5" />}
+                  Create link
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
