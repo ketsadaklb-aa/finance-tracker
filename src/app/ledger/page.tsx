@@ -148,6 +148,7 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
   const fd  = (d: string | Date) =>
     (typeof d === "string" ? new Date(d) : d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const esc = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const ftime = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const now = new Date();
 
   const sectionHTML = (items: ARItem[], isAR: boolean): string => {
@@ -175,8 +176,8 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
       const paidCls = item.status === "settled" ? " paid-off" : "";
       rows += `<tbody class="record${paidCls}">
         <tr>
-          <td class="desc">${esc(desc)}</td>
           <td>${fd(item.agreementDate)}${dueHtml}</td>
+          <td class="desc">${esc(desc)}</td>
           <td class="status ${sCls}">${sLabel}</td>
           <td class="ccy">${ccy}</td>
           <td class="num muted">${num(item.originalAmount)}</td>
@@ -215,8 +216,8 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
       <h2 class="sec-title">${esc(title)}</h2>
       <table>
         <thead><tr>
-          <th style="width:28%">${T.col_desc}</th>
-          <th style="width:13%">${T.col_agreed}</th>
+          <th style="width:15%">${T.col_agreed}</th>
+          <th style="width:26%">${T.col_desc}</th>
           <th style="width:11%">${T.col_status}</th>
           <th style="width:7%">${T.col_ccy}</th>
           <th class="num" style="width:13%">${T.col_orig}</th>
@@ -261,6 +262,7 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     .hdr-date{display:flex;align-items:baseline;gap:5px}
     .date-lbl{font-size:9px;color:#94a3b8}
     .date-val{font-size:16px;font-weight:700;color:#fff;white-space:nowrap}
+    .date-time{font-size:11px;font-weight:600;color:#94a3b8;white-space:nowrap}
     .hdr h1{font-size:22px;font-weight:700;line-height:1.2}
     .summary{display:flex;gap:10px;margin:6px 0 4px}
     .sum-card{flex:1;border-radius:6px;padding:8px 12px;display:flex;flex-direction:column;gap:3px;border:1px solid #e2e8f0;border-left-width:3px}
@@ -315,6 +317,7 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
         <div class="hdr-date">
           <span class="date-lbl">${T.date_label}:</span>
           <span class="date-val">${fd(now)}</span>
+          <span class="date-time">${ftime(now)}</span>
         </div>
       </div>
       <h1>${esc(contact.name)}</h1>
