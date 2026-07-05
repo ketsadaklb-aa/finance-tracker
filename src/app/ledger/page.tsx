@@ -666,6 +666,7 @@ export default function LedgerPage() {
   const [dialogType, setDialogType] = useState<"ar" | "ap">("ar");
   const [editRecord, setEditRecord] = useState<ARItem | null>(null);
   const [form, setForm] = useState(emptyForm());
+  const [initialForm, setInitialForm] = useState(emptyForm()); // snapshot taken when the dialog opens
   const [recordFile, setRecordFile] = useState<File | null>(null);
   const [discardConfirm, setDiscardConfirm] = useState(false);
 
@@ -749,7 +750,8 @@ export default function LedgerPage() {
   function openAdd(type: "ar" | "ap", contactId: string) {
     setDialogType(type);
     setEditRecord(null);
-    setForm(emptyForm(contactId));
+    const f = emptyForm(contactId);
+    setForm(f); setInitialForm(f);
     setRecordFile(null);
     setDialogOpen(true);
   }
@@ -757,7 +759,8 @@ export default function LedgerPage() {
   function openAddTop() {
     setDialogType("ar");
     setEditRecord(null);
-    setForm(emptyForm());
+    const f = emptyForm();
+    setForm(f); setInitialForm(f);
     setRecordFile(null);
     setDialogOpen(true);
   }
@@ -765,28 +768,37 @@ export default function LedgerPage() {
   function openEdit(item: ARItem, type: "ar" | "ap") {
     setDialogType(type);
     setEditRecord(item);
-    setForm({
+    const f = {
       contactId: item.contact.id, currencyId: item.currency.id,
       originalAmount: String(item.originalAmount), description: item.description ?? "",
       agreementDate: item.agreementDate.slice(0, 10), dueDate: item.dueDate?.slice(0, 10) ?? "",
       note: item.note ?? "",
-    });
+    };
+    setForm(f); setInitialForm(f);
     setRecordFile(null);
     setDialogOpen(true);
   }
 
-  // Has the user entered anything worth protecting from an accidental close?
+  // Dirty = the form differs from its opening snapshot, or a file was attached.
   function formDirty() {
-    return !!(
-      form.originalAmount || form.description || form.note ||
-      form.dueDate || form.currencyId || recordFile || editRecord
-    );
+    return JSON.stringify(form) !== JSON.stringify(initialForm) || !!recordFile;
   }
 
-  // Called when the user tries to dismiss via outside-click / Escape
-  function requestClose() {
-    if (formDirty()) setDiscardConfirm(true);
-    else setDialogOpen(false);
+  // Fully close the dialog and clear its state.
+  function closeAndReset() {
+    setDialogOpen(false);
+    setEditRecord(null);
+    setForm(emptyForm());
+    setRecordFile(null);
+    setDiscardConfirm(false);
+  }
+
+  // Single gate for every dismissal (outside-click, Escape, ✕). Because the
+  // dialog is controlled, refusing to flip `dialogOpen` keeps it open.
+  function handleOpenChange(open: boolean) {
+    if (open) { setDialogOpen(true); return; }
+    if (formDirty()) { setDiscardConfirm(true); return; }
+    closeAndReset();
   }
 
   // ── Public share link ────────────────────────────────────────────────────────
@@ -1213,11 +1225,13 @@ export default function LedgerPage() {
       )}
 
       {/* Add / Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={v => { setDialogOpen(v); if (!v) { setEditRecord(null); setForm(emptyForm()); setRecordFile(null); setDiscardConfirm(false); } }}>
+      <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
         {/* flex flex-col + overflow-hidden so only the body scrolls, footer stays fixed */}
+        {/* Blank-space clicks are a no-op so a stray click never dismisses the form.
+            Closing is deliberate only: Cancel, the ✕, Escape, or a successful Save. */}
         <DialogContent className="flex flex-col overflow-hidden p-0 gap-0"
-          onInteractOutside={e => { e.preventDefault(); requestClose(); }}
-          onEscapeKeyDown={e => { e.preventDefault(); requestClose(); }}>
+          onPointerDownOutside={e => e.preventDefault()}
+          onInteractOutside={e => e.preventDefault()}>
           {/* Discard-confirm overlay — blocks accidental data loss on outside-click/Escape */}
           {discardConfirm && (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-sm rounded-xl">
@@ -1228,7 +1242,7 @@ export default function LedgerPage() {
                   <Button type="button" variant="outline" className="flex-1"
                     onClick={() => setDiscardConfirm(false)}>Keep editing</Button>
                   <Button type="button" variant="destructive" className="flex-1"
-                    onClick={() => { setDiscardConfirm(false); setDialogOpen(false); }}>Discard</Button>
+                    onClick={closeAndReset}>Discard</Button>
                 </div>
               </div>
             </div>
@@ -1344,7 +1358,7 @@ export default function LedgerPage() {
           {/* Fixed footer — always visible, never scrolls away */}
           <div className="px-5 py-4 border-t border-slate-100 shrink-0">
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={closeAndReset}>Cancel</Button>
               <Button type="submit" form="ledger-form"
                 disabled={loading || uploading || !form.contactId || (!editRecord && !form.currencyId) || !form.originalAmount}>
                 {uploading ? "Uploading..." : loading ? "Saving..." : editRecord ? "Update" : "Save"}
