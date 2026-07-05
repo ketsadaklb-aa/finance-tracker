@@ -5,7 +5,9 @@ import { MobileNav } from "./mobile-nav";
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/login") return <>{children}</>;
+  // Standalone (no app sidebar/nav): the login screen and public share links.
+  // Public visitors must never see the app's menu or structure.
+  if (pathname === "/login" || pathname.startsWith("/share")) return <>{children}</>;
   return (
     <>
       <Sidebar />
