@@ -250,77 +250,143 @@ function Section({ title, items, isAR, T, onDoc }: {
       {items.length === 0 ? (
         <p className="text-slate-400 text-sm py-3 px-3">{T.none}</p>
       ) : (
-        <div className="overflow-x-auto mt-2">
-          <table className="w-full text-xs sm:text-sm">
-            <thead>
-              <tr className="text-left text-slate-500 border-b border-slate-200">
-                <th className="py-2 pr-2 font-medium">{T.desc}</th>
-                <th className="py-2 pr-2 font-medium whitespace-nowrap">{T.date}</th>
-                <th className="py-2 pr-2 font-medium">{T.status}</th>
-                <th className="py-2 pr-2 font-medium">{T.ccy}</th>
-                <th className="py-2 pr-2 font-medium text-right">{T.orig}</th>
-                <th className="py-2 pr-2 font-medium text-right">{isAR ? T.recv : T.paid}</th>
-                <th className="py-2 pr-2 font-medium text-right">{T.rem}</th>
-                <th className="py-2 font-medium">{T.doc}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(it => {
-                const paidOff = it.status === "settled";
-                return (
-                  <Fragment key={it.id}>
-                    <tr className={`border-b border-slate-50 ${paidOff ? "text-slate-400" : "text-slate-700"}`}>
-                      <td className={`py-2 pr-2 ${paidOff ? "" : "font-semibold text-slate-800"}`}>{it.description || <span className="text-slate-300">—</span>}</td>
-                      <td className="py-2 pr-2 whitespace-nowrap text-slate-500">{fmtDate(it.agreementDate)}</td>
-                      <td className={`py-2 pr-2 font-medium ${paidOff ? "text-green-600" : it.status === "partial" ? "text-orange-600" : "text-slate-500"}`}>{statusLabel(it.status, T)}</td>
-                      <td className="py-2 pr-2 text-slate-500 font-medium">{it.currency.code}</td>
-                      <td className="py-2 pr-2 text-right">{formatAmount(it.originalAmount, it.currency.symbol)}</td>
-                      <td className="py-2 pr-2 text-right">{formatAmount(it.paidAmount, it.currency.symbol)}</td>
-                      <td className={`py-2 pr-2 text-right font-bold ${paidOff ? "text-green-500" : remColor}`}>{formatAmount(it.remainingAmount, it.currency.symbol)}</td>
-                      <td className="py-2">
-                        {it.attachmentUrl && (
-                          <button onClick={() => onDoc(it.attachmentUrl!)}
-                            className="inline-flex items-center gap-1 text-blue-600 hover:underline text-xs">
-                            <Paperclip className="h-3 w-3" />{T.viewDoc}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                    {it.payments.map(p => (
-                      <tr key={p.id} className="text-[11px] text-slate-400 bg-slate-50/60">
-                        <td className="py-1.5 pr-2 pl-3" colSpan={3}>└ {T.payment} · {fmtDate(p.date)}{p.note ? ` · ${p.note}` : ""}</td>
-                        <td className="py-1.5 pr-2 text-slate-400">{p.currency.code}</td>
-                        <td />
-                        <td className="py-1.5 pr-2 text-right text-slate-500">{formatAmount(p.amount, p.currency.symbol)}</td>
-                        <td />
-                        <td className="py-1.5">
-                          {p.attachmentUrl && (
-                            <button onClick={() => onDoc(p.attachmentUrl!)} className="inline-flex items-center gap-1 text-blue-500 hover:underline">
+        <>
+          {/* ── Mobile: stacked cards ─────────────────────────────────────── */}
+          <div className="sm:hidden mt-2 space-y-2">
+            {items.map(it => {
+              const paidOff = it.status === "settled";
+              return (
+                <div key={it.id} className={`rounded-xl border p-3 ${paidOff ? "border-slate-100 bg-slate-50/50" : "border-slate-200 bg-white"}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-slate-500 whitespace-nowrap">{fmtDate(it.agreementDate)}</span>
+                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${statusChip(it.status)}`}>{statusLabel(it.status, T)}</span>
+                  </div>
+                  <p className={`mt-1 text-sm break-words ${paidOff ? "text-slate-400" : "font-semibold text-slate-800"}`}>
+                    {it.description || <span className="text-slate-300">—</span>}
+                  </p>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <div className="text-xs text-slate-500 space-y-0.5">
+                      <div>{T.orig}: <span className="text-slate-700">{formatAmount(it.originalAmount, it.currency.symbol)}</span></div>
+                      <div>{isAR ? T.recv : T.paid}: <span className="text-slate-700">{formatAmount(it.paidAmount, it.currency.symbol)}</span></div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-400">{T.rem}</div>
+                      <div className={`text-base font-bold ${paidOff ? "text-green-500" : remColor}`}>
+                        {formatAmount(it.remainingAmount, it.currency.symbol)} <span className="text-[11px] font-medium text-slate-400">{it.currency.code}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {it.attachmentUrl && (
+                    <button onClick={() => onDoc(it.attachmentUrl!)}
+                      className="mt-2 inline-flex items-center gap-1 text-blue-600 hover:underline text-xs">
+                      <Paperclip className="h-3 w-3" />{T.viewDoc} {T.doc}
+                    </button>
+                  )}
+                  {it.payments.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
+                      {it.payments.map(p => (
+                        <div key={p.id} className="flex items-center justify-between text-[11px] text-slate-400">
+                          <span className="truncate">└ {T.payment} · {fmtDate(p.date)}{p.note ? ` · ${p.note}` : ""}</span>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            {formatAmount(p.amount, p.currency.symbol)}
+                            {p.attachmentUrl && (
+                              <button onClick={() => onDoc(p.attachmentUrl!)} className="text-blue-500"><Paperclip className="h-3 w-3" /></button>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {[...totals.entries()].map(([code, t]) => (
+              <div key={code} className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-bold ${isAR ? "bg-blue-50" : "bg-red-50"}`}>
+                <span className="text-slate-600">{T.total} · {code}</span>
+                <span className={remColor}>{formatAmount(t.rem, t.symbol)}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Desktop: table (Agreed-first) ─────────────────────────────── */}
+          <div className="hidden sm:block overflow-x-auto mt-2">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-slate-500 border-b border-slate-200">
+                  <th className="py-2 pr-2 font-medium whitespace-nowrap">{T.date}</th>
+                  <th className="py-2 pr-2 font-medium">{T.desc}</th>
+                  <th className="py-2 pr-2 font-medium">{T.status}</th>
+                  <th className="py-2 pr-2 font-medium">{T.ccy}</th>
+                  <th className="py-2 pr-2 font-medium text-right">{T.orig}</th>
+                  <th className="py-2 pr-2 font-medium text-right">{isAR ? T.recv : T.paid}</th>
+                  <th className="py-2 pr-2 font-medium text-right">{T.rem}</th>
+                  <th className="py-2 font-medium">{T.doc}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(it => {
+                  const paidOff = it.status === "settled";
+                  return (
+                    <Fragment key={it.id}>
+                      <tr className={`border-b border-slate-50 ${paidOff ? "text-slate-400" : "text-slate-700"}`}>
+                        <td className="py-2 pr-2 whitespace-nowrap text-slate-500">{fmtDate(it.agreementDate)}</td>
+                        <td className={`py-2 pr-2 ${paidOff ? "" : "font-semibold text-slate-800"}`}>{it.description || <span className="text-slate-300">—</span>}</td>
+                        <td className={`py-2 pr-2 font-medium ${paidOff ? "text-green-600" : it.status === "partial" ? "text-orange-600" : "text-slate-500"}`}>{statusLabel(it.status, T)}</td>
+                        <td className="py-2 pr-2 text-slate-500 font-medium">{it.currency.code}</td>
+                        <td className="py-2 pr-2 text-right">{formatAmount(it.originalAmount, it.currency.symbol)}</td>
+                        <td className="py-2 pr-2 text-right">{formatAmount(it.paidAmount, it.currency.symbol)}</td>
+                        <td className={`py-2 pr-2 text-right font-bold ${paidOff ? "text-green-500" : remColor}`}>{formatAmount(it.remainingAmount, it.currency.symbol)}</td>
+                        <td className="py-2">
+                          {it.attachmentUrl && (
+                            <button onClick={() => onDoc(it.attachmentUrl!)}
+                              className="inline-flex items-center gap-1 text-blue-600 hover:underline text-xs">
                               <Paperclip className="h-3 w-3" />{T.viewDoc}
                             </button>
                           )}
                         </td>
                       </tr>
-                    ))}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              {[...totals.entries()].map(([code, t]) => (
-                <tr key={code} className={`font-bold border-t-2 ${isAR ? "border-blue-600" : "border-red-600"}`}>
-                  <td className="py-2 pr-2" colSpan={3}>{T.total}</td>
-                  <td className="py-2 pr-2 text-slate-500">{code}</td>
-                  <td className="py-2 pr-2 text-right text-slate-600">{formatAmount(t.orig, t.symbol)}</td>
-                  <td className="py-2 pr-2 text-right text-slate-600">{formatAmount(t.paid, t.symbol)}</td>
-                  <td className={`py-2 pr-2 text-right ${remColor}`}>{formatAmount(t.rem, t.symbol)}</td>
-                  <td />
-                </tr>
-              ))}
-            </tfoot>
-          </table>
-        </div>
+                      {it.payments.map(p => (
+                        <tr key={p.id} className="text-[11px] text-slate-400 bg-slate-50/60">
+                          <td className="py-1.5 pr-2 pl-3" colSpan={3}>└ {T.payment} · {fmtDate(p.date)}{p.note ? ` · ${p.note}` : ""}</td>
+                          <td className="py-1.5 pr-2 text-slate-400">{p.currency.code}</td>
+                          <td />
+                          <td className="py-1.5 pr-2 text-right text-slate-500">{formatAmount(p.amount, p.currency.symbol)}</td>
+                          <td />
+                          <td className="py-1.5">
+                            {p.attachmentUrl && (
+                              <button onClick={() => onDoc(p.attachmentUrl!)} className="inline-flex items-center gap-1 text-blue-500 hover:underline">
+                                <Paperclip className="h-3 w-3" />{T.viewDoc}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                {[...totals.entries()].map(([code, t]) => (
+                  <tr key={code} className={`font-bold border-t-2 ${isAR ? "border-blue-600" : "border-red-600"}`}>
+                    <td className="py-2 pr-2" colSpan={3}>{T.total}</td>
+                    <td className="py-2 pr-2 text-slate-500">{code}</td>
+                    <td className="py-2 pr-2 text-right text-slate-600">{formatAmount(t.orig, t.symbol)}</td>
+                    <td className="py-2 pr-2 text-right text-slate-600">{formatAmount(t.paid, t.symbol)}</td>
+                    <td className={`py-2 pr-2 text-right ${remColor}`}>{formatAmount(t.rem, t.symbol)}</td>
+                    <td />
+                  </tr>
+                ))}
+              </tfoot>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
+}
+
+function statusChip(status: string) {
+  return status === "settled" ? "bg-green-50 text-green-600"
+    : status === "partial" ? "bg-orange-50 text-orange-600"
+    : "bg-slate-100 text-slate-500";
 }
