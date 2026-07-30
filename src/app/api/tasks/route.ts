@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
       priority: ["low", "medium", "high"].includes(b.priority) ? b.priority : "medium",
       dueDate: b.dueDate ? new Date(b.dueDate) : null,
       dueTime: b.dueTime || null,
+      durationMin: typeof b.durationMin === "number" ? b.durationMin : undefined,
       assigneeId: b.assigneeId || null,
       checklist: Array.isArray(b.checklist) ? b.checklist : undefined,
       attachments: Array.isArray(b.attachments) ? b.attachments : undefined,

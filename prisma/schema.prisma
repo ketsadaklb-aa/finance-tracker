@@ -238,7 +238,8 @@ model Task {
   status      String    @default("todo")    // todo | doing | done
   priority    String    @default("medium")  // low | medium | high
   dueDate     DateTime?
-  dueTime     String?                        // "HH:MM" local time-of-day (optional)
+  dueTime     String?                        // "HH:MM" local start time (optional)
+  durationMin Int?                            // block length in minutes when timed (week/day grid)
   checklist   Json?                          // [{ id, text, done }]
   attachments Json?                          // [{ id, name, url (data URI), type }]
   order       Float     @default(0)          // manual sort within a column (fractional)

@@ -20,6 +20,7 @@ export interface Task {
   priority: TaskPriority;
   dueDate: string | null;
   dueTime: string | null;
+  durationMin: number | null;
   checklist: ChecklistItem[] | null;
   attachments: Attachment[] | null;
   archivedAt: string | null;
@@ -35,6 +36,15 @@ export const initials = (name: string) =>
   name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase() || "?";
 
 export const checklistDone = (c: ChecklistItem[] | null) => (c ?? []).filter(i => i.done).length;
+
+// Time-of-day helpers for the week/day grid
+export const hmToMin = (t: string | null | undefined): number | null => {
+  if (!t) return null;
+  const [h, m] = t.split(":").map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+};
+export const minToHm = (min: number) =>
+  `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 
 export const COLUMNS: { key: TaskStatus; label: string; accent: string; dot: string }[] = [
   { key: "todo",  label: "To do",       accent: "border-t-slate-300", dot: "bg-slate-400" },

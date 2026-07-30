@@ -28,6 +28,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (["low", "medium", "high"].includes(b.priority)) data.priority = b.priority;
   if (b.dueDate !== undefined) data.dueDate = b.dueDate ? new Date(b.dueDate) : null;
   if (b.dueTime !== undefined) data.dueTime = b.dueTime || null;
+  if (b.durationMin !== undefined) data.durationMin = typeof b.durationMin === "number" ? b.durationMin : null;
   if (b.assigneeId !== undefined) data.assigneeId = b.assigneeId || null;
   if (b.checklist !== undefined) data.checklist = Array.isArray(b.checklist) ? b.checklist : null;
   if (b.attachments !== undefined) data.attachments = Array.isArray(b.attachments) ? b.attachments : null;

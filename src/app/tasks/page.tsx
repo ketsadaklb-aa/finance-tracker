@@ -17,7 +17,8 @@ import {
   COLUMNS, PRIORITY, ymd,
 } from "./types";
 import { Board } from "./board";
-import { Calendar } from "./calendar";
+import { Scheduler } from "./scheduler";
+import type { SchedulePatch } from "./week-grid";
 import { Agenda } from "./agenda";
 import { useReminders, requestNotificationPermission } from "./use-reminders";
 
@@ -121,6 +122,19 @@ export default function TasksPage() {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, dueDate: date ? `${date}T12:00:00` : null } : t));
     const r = await fetch(`/api/tasks/${taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dueDate: date }) });
     if (!r.ok) { toast("Reschedule failed", "error"); load(); }
+  }
+  // Week/Day grid: place into a time slot / move / resize duration
+  async function schedule(taskId: string, patch: SchedulePatch) {
+    setTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const next = { ...t };
+      if (patch.dueDate !== undefined) next.dueDate = patch.dueDate ? `${patch.dueDate}T12:00:00` : null;
+      if (patch.dueTime !== undefined) next.dueTime = patch.dueTime;
+      if (patch.durationMin !== undefined) next.durationMin = patch.durationMin;
+      return next;
+    }));
+    const r = await fetch(`/api/tasks/${taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+    if (!r.ok) { toast("Schedule failed", "error"); load(); }
   }
   async function toggleDone(t: Task) {
     const status: TaskStatus = t.status === "done" ? "todo" : "done";
@@ -242,7 +256,7 @@ export default function TasksPage() {
       ) : view === "board" ? (
         <Board tasks={filtered} onOpen={openEdit} onAdd={openNew} onMove={move} />
       ) : view === "calendar" ? (
-        <Calendar tasks={filtered} onOpen={openEdit} onReschedule={reschedule} />
+        <Scheduler tasks={filtered} onOpen={openEdit} onReschedule={reschedule} onSchedule={schedule} />
       ) : (
         <Agenda tasks={filtered} onOpen={openEdit} onToggleDone={toggleDone} />
       )}
