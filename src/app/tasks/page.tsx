@@ -82,7 +82,8 @@ export default function TasksPage() {
   // ── Manage columns ──────────────────────────────────────────────────────────
   function openColumns() { setDraftCols(columns.map(c => ({ ...c }))); setColsOpen(true); }
   const setColLabel = (id: string, label: string) => setDraftCols(cs => cs.map(c => c.id === id ? { ...c, label } : c));
-  const addColumn = () => setDraftCols(cs => [...cs, { id: uid(), label: "New column" }]);
+  const setColRow = (id: string, row: number) => setDraftCols(cs => cs.map(c => c.id === id ? { ...c, row } : c));
+  const addColumn = () => setDraftCols(cs => [...cs, { id: uid(), label: "New column", row: 1 }]);
   const removeColumn = (id: string) => setDraftCols(cs => cs.filter(c => c.id !== id));
   const moveColumn = (id: string, dir: -1 | 1) => setDraftCols(cs => {
     const i = cs.findIndex(c => c.id === id); const j = i + dir;
@@ -90,8 +91,8 @@ export default function TasksPage() {
     const next = [...cs]; [next[i], next[j]] = [next[j], next[i]]; return next;
   });
   async function saveColumns() {
-    const clean = draftCols.map(c => ({ id: c.id, label: c.label.trim() || "Untitled" }));
-    if (!clean.some(c => c.id === "done")) clean.push({ id: "done", label: "Done" });
+    const clean = draftCols.map(c => ({ id: c.id, label: c.label.trim() || "Untitled", row: c.row ?? 1 }));
+    if (!clean.some(c => c.id === "done")) clean.push({ id: "done", label: "Done", row: 1 });
     // Reassign tasks whose column was removed → first column
     const removed = columns.filter(c => !clean.some(d => d.id === c.id)).map(c => c.id);
     const firstId = clean[0]?.id;
@@ -445,13 +446,19 @@ export default function TasksPage() {
                   <button onClick={() => moveColumn(c.id, 1)} disabled={i === draftCols.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronDown className="h-3.5 w-3.5" /></button>
                 </div>
                 <Input value={c.label} onChange={e => setColLabel(c.id, e.target.value)} className="flex-1" />
+                <div className="flex items-center gap-1 shrink-0" title="Columns with the same row number sit side by side">
+                  <span className="text-[10px] text-slate-400">Row</span>
+                  <input type="number" min={1} value={c.row ?? 1}
+                    onChange={e => setColRow(c.id, Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-11 text-sm border border-slate-200 rounded-md px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+                </div>
                 {c.id === "done"
                   ? <span title="Completion column" className="text-emerald-500 w-6 text-center"><Check className="h-4 w-4 inline" /></span>
                   : <button onClick={() => removeColumn(c.id)} className="text-slate-300 hover:text-red-500 w-6 flex justify-center"><Trash2 className="h-4 w-4" /></button>}
               </div>
             ))}
             <button onClick={addColumn} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline pt-1"><Plus className="h-4 w-4" /> Add column</button>
-            <p className="text-xs text-slate-400 pt-1">The <strong>Done</strong> column powers completed styling and can be renamed but not removed. Deleting a column moves its tasks to the first column.</p>
+            <p className="text-xs text-slate-400 pt-1">Give columns the same <strong>Row</strong> number to place them on one line (e.g. To do · In progress · Done on row 1; Delegate · Later on row 2). The <strong>Done</strong> column can be renamed but not removed; deleting a column moves its tasks to the first.</p>
           </div>
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 mt-2">
             <Button type="button" variant="outline" onClick={() => setColsOpen(false)}>Cancel</Button>

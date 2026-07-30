@@ -12,7 +12,7 @@ export interface UserLite { id: string; name: string }
 export type TaskStatus = string; // a column id (customizable per user)
 export type TaskPriority = "low" | "medium" | "high";
 
-export interface BoardColumn { id: string; label: string }
+export interface BoardColumn { id: string; label: string; row?: number }
 
 export interface Task {
   id: string;
@@ -49,11 +49,11 @@ export const minToHm = (min: number) =>
   `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 
 export const DEFAULT_COLUMNS: BoardColumn[] = [
-  { id: "todo",     label: "To do / Braindump" },
-  { id: "doing",    label: "In progress" },
-  { id: "delegate", label: "Delegate" },
-  { id: "later",    label: "Later" },
-  { id: "done",     label: "Done" },
+  { id: "todo",     label: "To do / Braindump", row: 1 },
+  { id: "doing",    label: "In progress",       row: 1 },
+  { id: "delegate", label: "Delegate",          row: 2 },
+  { id: "later",    label: "Later",             row: 2 },
+  { id: "done",     label: "Done",              row: 1 },
 ];
 
 const COLUMN_PALETTE = [

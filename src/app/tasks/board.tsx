@@ -39,7 +39,7 @@ function Column({
   const { setNodeRef, isOver } = useDroppable({ id: col.id });
   const style = columnStyle(col.id, index);
   return (
-    <div className={`flex flex-col rounded-2xl bg-slate-50 border-t-4 ${style.accent} min-h-[120px] w-[280px] shrink-0`}>
+    <div className={`flex flex-col rounded-2xl bg-slate-50 border-t-4 ${style.accent} min-h-[120px] w-full`}>
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`h-2 w-2 rounded-full shrink-0 ${style.dot}`} />
@@ -137,9 +137,15 @@ export function Board({
   return (
     <DndContext sensors={sensors} collisionDetection={closestCorners}
       onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
-      <div className="flex gap-3 overflow-x-auto pb-2">
-        {columns.map((col, i) => (
-          <Column key={col.id} col={col} index={i} items={cols[col.id] ?? []} onOpen={onOpen} onAdd={onAdd} />
+      <div className="space-y-3">
+        {[...new Set(columns.map(c => c.row ?? 1))].sort((a, b) => a - b).map(rowNum => (
+          <div key={rowNum} className="flex gap-3 overflow-x-auto pb-1">
+            {columns.map((col, i) => (col.row ?? 1) === rowNum ? (
+              <div key={col.id} className="flex-1 min-w-[240px]">
+                <Column col={col} index={i} items={cols[col.id] ?? []} onOpen={onOpen} onAdd={onAdd} />
+              </div>
+            ) : null)}
+          </div>
         ))}
       </div>
       <DragOverlay>{activeTask ? <TaskCard task={activeTask} dragging /> : null}</DragOverlay>
