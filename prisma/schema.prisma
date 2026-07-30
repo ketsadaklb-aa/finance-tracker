@@ -34,6 +34,7 @@ model User {
   sessions      Session[]
   accountAccess AccountAccess[]
   contactAccess ContactAccess[]
+  boardColumns  Json?         // custom kanban columns: [{ id, label }]
   tasks         Task[]        @relation("TaskOwner")
   assignedTasks Task[]        @relation("TaskAssignee")
   taskComments  TaskComment[]

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Inbox } from "lucide-react";
 import { Task, PRIORITY, ymd, dueYmd, hmToMin, minToHm } from "./types";
 
 const DAY_START = 6 * 60;      // 06:00
@@ -100,6 +100,7 @@ export function WeekGrid({ mode, tasks, onOpen, onSchedule }: {
 
   const timed = (d: Date) => tasks.filter(t => dueYmd(t.dueDate) === ymd(d) && t.dueTime);
   const allDay = (d: Date) => tasks.filter(t => dueYmd(t.dueDate) === ymd(d) && !t.dueTime);
+  const unscheduled = tasks.filter(t => !t.dueDate && t.status !== "done");
   const hours = Array.from({ length: (DAY_END - DAY_START) / 60 }, (_, i) => DAY_START / 60 + i);
   const label = mode === "day"
     ? cursor.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })
@@ -114,6 +115,29 @@ export function WeekGrid({ mode, tasks, onOpen, onSchedule }: {
           <button onClick={() => setCursor(new Date())} className="text-xs font-medium px-2.5 py-1.5 rounded-lg hover:bg-slate-100 text-slate-600">Today</button>
           <button onClick={() => shift(1)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"><ChevronRight className="h-4 w-4" /></button>
         </div>
+      </div>
+
+      {/* Unscheduled backlog — drag a chip down onto a time slot to schedule it */}
+      <div className="mb-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-2">
+        <div className="flex items-center gap-2 mb-1.5 px-1">
+          <Inbox className="h-3.5 w-3.5 text-slate-400" />
+          <span className="text-xs font-semibold text-slate-500">Unscheduled</span>
+          <span className="text-[11px] text-slate-400">{unscheduled.length}</span>
+          <span className="text-[11px] text-slate-400 ml-auto hidden sm:inline">drag onto the grid to schedule</span>
+        </div>
+        {unscheduled.length === 0 ? (
+          <p className="text-[11px] text-slate-400 px-1 pb-0.5">No unscheduled tasks.</p>
+        ) : (
+          <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+            {unscheduled.map(t => (
+              <div key={t.id} onPointerDown={e => startPlace(e, t)}
+                className={`shrink-0 flex items-center gap-1 text-[11px] rounded-md px-2 py-1 cursor-grab active:cursor-grabbing border bg-white border-slate-200 text-slate-700 max-w-[170px] ${drag?.task.id === t.id ? "opacity-40" : ""}`}>
+                <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${PRIORITY[t.priority].dot}`} />
+                <span className="truncate">{t.title}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-slate-100 overflow-hidden">

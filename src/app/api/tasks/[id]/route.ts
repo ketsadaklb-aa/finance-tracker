@@ -24,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const data: Record<string, unknown> = {};
   if (typeof b.title === "string" && b.title.trim()) data.title = b.title.trim();
   if (b.description !== undefined) data.description = b.description || null;
-  if (["todo", "doing", "done"].includes(b.status)) data.status = b.status;
+  if (typeof b.status === "string" && b.status.trim()) data.status = b.status.trim();
   if (["low", "medium", "high"].includes(b.priority)) data.priority = b.priority;
   if (b.dueDate !== undefined) data.dueDate = b.dueDate ? new Date(b.dueDate) : null;
   if (b.dueTime !== undefined) data.dueTime = b.dueTime || null;

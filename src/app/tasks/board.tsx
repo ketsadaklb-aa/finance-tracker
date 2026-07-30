@@ -7,15 +7,15 @@ import type { DragStartEvent, DragOverEvent, DragEndEvent, UniqueIdentifier } fr
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Plus } from "lucide-react";
-import { Task, TaskStatus, COLUMNS, groupByStatus } from "./types";
+import { Task, TaskStatus, BoardColumn, columnStyle, groupByColumns } from "./types";
 import { TaskCard } from "./task-card";
 
-type Cols = Record<TaskStatus, Task[]>;
+type Cols = Record<string, Task[]>;
 
-const findContainer = (cols: Cols, id: UniqueIdentifier): TaskStatus | undefined =>
+const findContainer = (cols: Cols, id: UniqueIdentifier): string | undefined =>
   (id as string) in cols
-    ? (id as TaskStatus)
-    : (Object.keys(cols) as TaskStatus[]).find(k => cols[k].some(t => t.id === id));
+    ? (id as string)
+    : Object.keys(cols).find(k => cols[k].some(t => t.id === id));
 
 function SortableCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
@@ -32,21 +32,22 @@ function SortableCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void 
 }
 
 function Column({
-  col, items, onOpen, onAdd,
+  col, index, items, onOpen, onAdd,
 }: {
-  col: (typeof COLUMNS)[number]; items: Task[]; onOpen: (t: Task) => void; onAdd: (s: TaskStatus) => void;
+  col: BoardColumn; index: number; items: Task[]; onOpen: (t: Task) => void; onAdd: (s: TaskStatus) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: col.key });
+  const { setNodeRef, isOver } = useDroppable({ id: col.id });
+  const style = columnStyle(col.id, index);
   return (
-    <div className={`flex flex-col rounded-2xl bg-slate-50 border-t-4 ${col.accent} min-h-[120px]`}>
+    <div className={`flex flex-col rounded-2xl bg-slate-50 border-t-4 ${style.accent} min-h-[120px] w-[280px] shrink-0`}>
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
-        <div className="flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${col.dot}`} />
-          <span className="text-sm font-semibold text-slate-700">{col.label}</span>
-          <span className="text-xs text-slate-400">{items.length}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`h-2 w-2 rounded-full shrink-0 ${style.dot}`} />
+          <span className="text-sm font-semibold text-slate-700 truncate">{col.label}</span>
+          <span className="text-xs text-slate-400 shrink-0">{items.length}</span>
         </div>
-        <button onClick={() => onAdd(col.key)} title="Add task"
-          className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/70">
+        <button onClick={() => onAdd(col.id)} title="Add task"
+          className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 shrink-0">
           <Plus className="h-4 w-4" />
         </button>
       </div>
@@ -61,22 +62,22 @@ function Column({
 }
 
 export function Board({
-  tasks, onOpen, onAdd, onMove,
+  tasks, columns, onOpen, onAdd, onMove,
 }: {
   tasks: Task[];
+  columns: BoardColumn[];
   onOpen: (t: Task) => void;
   onAdd: (s: TaskStatus) => void;
   onMove: (taskId: string, status: TaskStatus, order: number) => void;
 }) {
-  const [cols, setCols] = useState<Cols>(() => groupByStatus(tasks));
+  const [cols, setCols] = useState<Cols>(() => groupByColumns(tasks, columns));
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   );
 
-  // Re-sync from server data whenever it changes and we're not mid-drag.
-  useEffect(() => { if (!activeId) setCols(groupByStatus(tasks)); }, [tasks, activeId]);
+  useEffect(() => { if (!activeId) setCols(groupByColumns(tasks, columns)); }, [tasks, columns, activeId]);
 
   const activeTask = activeId ? Object.values(cols).flat().find(t => t.id === activeId) : null;
 
@@ -136,9 +137,9 @@ export function Board({
   return (
     <DndContext sensors={sensors} collisionDetection={closestCorners}
       onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {COLUMNS.map(col => (
-          <Column key={col.key} col={col} items={cols[col.key]} onOpen={onOpen} onAdd={onAdd} />
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {columns.map((col, i) => (
+          <Column key={col.id} col={col} index={i} items={cols[col.id] ?? []} onOpen={onOpen} onAdd={onAdd} />
         ))}
       </div>
       <DragOverlay>{activeTask ? <TaskCard task={activeTask} dragging /> : null}</DragOverlay>

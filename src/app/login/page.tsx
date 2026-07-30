@@ -46,8 +46,8 @@ export default function LoginPage() {
               <span className="text-white text-2xl font-bold">₭</span>
             </div>
             <div>
-              <h1 className="text-white text-2xl font-bold tracking-tight">Catdy&apos;s</h1>
-              <p className="text-blue-300 text-sm font-medium mt-0.5">AR AP Tracker</p>
+              <h1 className="text-white text-2xl font-bold tracking-tight">Super Personal ERP</h1>
+              <p className="text-blue-300 text-sm font-medium mt-0.5">Task · Finance</p>
             </div>
           </div>
 
@@ -69,7 +69,7 @@ export default function LoginPage() {
             ))}
           </div>
 
-          <p className="text-blue-400/70 text-xs">© {new Date().getFullYear()} Catdy&apos;s AR AP Tracker</p>
+          <p className="text-blue-400/70 text-xs">© {new Date().getFullYear()} Super Personal ERP</p>
         </div>
       </div>
 
@@ -83,7 +83,7 @@ export default function LoginPage() {
               <span className="text-white text-xl font-bold">₭</span>
             </div>
             <div className="text-center">
-              <p className="font-bold text-slate-800">Catdy&apos;s AR AP Tracker</p>
+              <p className="font-bold text-slate-800">Super Personal ERP</p>
             </div>
           </div>
 

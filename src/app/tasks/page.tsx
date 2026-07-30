@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Plus, LayoutGrid, CalendarDays, ListChecks, Trash2, MessageSquare, Loader2,
-  Bell, Search, Archive, Paperclip, FileText, X, Check, Upload,
+  Bell, Search, Archive, Paperclip, FileText, X, Check, Upload, Columns3, ChevronUp, ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import {
-  Task, TaskStatus, TaskPriority, ChecklistItem, Attachment, UserLite,
-  COLUMNS, PRIORITY, ymd,
+  Task, TaskStatus, TaskPriority, ChecklistItem, Attachment, UserLite, BoardColumn,
+  DEFAULT_COLUMNS, PRIORITY, ymd,
 } from "./types";
 import { Board } from "./board";
 import { Scheduler } from "./scheduler";
@@ -33,8 +33,13 @@ export default function TasksPage() {
   const { toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<UserLite[]>([]);
+  const [columns, setColumns] = useState<BoardColumn[]>(DEFAULT_COLUMNS);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"board" | "calendar" | "agenda">("board");
+
+  // Manage-columns dialog
+  const [colsOpen, setColsOpen] = useState(false);
+  const [draftCols, setDraftCols] = useState<BoardColumn[]>([]);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -56,7 +61,7 @@ export default function TasksPage() {
 
   const editingTask = editingId ? tasks.find(t => t.id === editingId) ?? null : null;
 
-  useEffect(() => { load(); loadUsers(); }, []);
+  useEffect(() => { load(); loadUsers(); loadColumns(); }, []);
   useReminders(tasks, remindersOn);
 
   async function load() {
@@ -69,10 +74,44 @@ export default function TasksPage() {
     const r = await fetch("/api/users");
     if (r.ok) setUsers(await r.json());
   }
+  async function loadColumns() {
+    const r = await fetch("/api/tasks/columns");
+    if (r.ok) setColumns(await r.json());
+  }
+
+  // ── Manage columns ──────────────────────────────────────────────────────────
+  function openColumns() { setDraftCols(columns.map(c => ({ ...c }))); setColsOpen(true); }
+  const setColLabel = (id: string, label: string) => setDraftCols(cs => cs.map(c => c.id === id ? { ...c, label } : c));
+  const addColumn = () => setDraftCols(cs => [...cs, { id: uid(), label: "New column" }]);
+  const removeColumn = (id: string) => setDraftCols(cs => cs.filter(c => c.id !== id));
+  const moveColumn = (id: string, dir: -1 | 1) => setDraftCols(cs => {
+    const i = cs.findIndex(c => c.id === id); const j = i + dir;
+    if (i < 0 || j < 0 || j >= cs.length) return cs;
+    const next = [...cs]; [next[i], next[j]] = [next[j], next[i]]; return next;
+  });
+  async function saveColumns() {
+    const clean = draftCols.map(c => ({ id: c.id, label: c.label.trim() || "Untitled" }));
+    if (!clean.some(c => c.id === "done")) clean.push({ id: "done", label: "Done" });
+    // Reassign tasks whose column was removed → first column
+    const removed = columns.filter(c => !clean.some(d => d.id === c.id)).map(c => c.id);
+    const firstId = clean[0]?.id;
+    if (removed.length && firstId) {
+      const affected = tasks.filter(t => removed.includes(t.status));
+      setTasks(prev => prev.map(t => removed.includes(t.status) ? { ...t, status: firstId } : t));
+      await Promise.all(affected.map(t =>
+        fetch(`/api/tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: firstId }) })));
+    }
+    const r = await fetch("/api/tasks/columns", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ columns: clean }) });
+    if (!r.ok) { toast("Couldn't save columns", "error"); return; }
+    setColumns(await r.json());
+    setColsOpen(false);
+    toast("Columns updated");
+  }
 
   // ── Editor open/close ───────────────────────────────────────────────────────
-  function openNew(status: TaskStatus = "todo") {
-    setEditingId(null); setForm(emptyForm(status));
+  function openNew(status?: TaskStatus) {
+    const st = status ?? columns[0]?.id ?? "todo";
+    setEditingId(null); setForm(emptyForm(st));
     setChecklist([]); setAttachments([]); setNewItem(""); setComment(""); setOpen(true);
   }
   function openEdit(t: Task) {
@@ -245,8 +284,12 @@ export default function TasksPage() {
             {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
           </SelectContent>
         </Select>
-        <button onClick={archiveDone} title="Archive done tasks"
+        <button onClick={openColumns} title="Manage board columns"
           className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 px-2 py-2 ml-auto">
+          <Columns3 className="h-4 w-4" /> Columns
+        </button>
+        <button onClick={archiveDone} title="Archive done tasks"
+          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 px-2 py-2">
           <Archive className="h-4 w-4" /> Clear done
         </button>
       </div>
@@ -254,7 +297,7 @@ export default function TasksPage() {
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-slate-300" /></div>
       ) : view === "board" ? (
-        <Board tasks={filtered} onOpen={openEdit} onAdd={openNew} onMove={move} />
+        <Board tasks={filtered} columns={columns} onOpen={openEdit} onAdd={openNew} onMove={move} />
       ) : view === "calendar" ? (
         <Scheduler tasks={filtered} onOpen={openEdit} onReschedule={reschedule} onSchedule={schedule} />
       ) : (
@@ -279,7 +322,7 @@ export default function TasksPage() {
                 <Label>Status</Label>
                 <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v as TaskStatus }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{COLUMNS.map(c => <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>)}</SelectContent>
+                  <SelectContent>{columns.map(c => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
@@ -386,6 +429,33 @@ export default function TasksPage() {
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingId ? "Save" : "Create"}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manage columns */}
+      <Dialog open={colsOpen} onOpenChange={setColsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Board columns</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            {draftCols.map((c, i) => (
+              <div key={c.id} className="flex items-center gap-2">
+                <div className="flex flex-col">
+                  <button onClick={() => moveColumn(c.id, -1)} disabled={i === 0} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronUp className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => moveColumn(c.id, 1)} disabled={i === draftCols.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronDown className="h-3.5 w-3.5" /></button>
+                </div>
+                <Input value={c.label} onChange={e => setColLabel(c.id, e.target.value)} className="flex-1" />
+                {c.id === "done"
+                  ? <span title="Completion column" className="text-emerald-500 w-6 text-center"><Check className="h-4 w-4 inline" /></span>
+                  : <button onClick={() => removeColumn(c.id)} className="text-slate-300 hover:text-red-500 w-6 flex justify-center"><Trash2 className="h-4 w-4" /></button>}
+              </div>
+            ))}
+            <button onClick={addColumn} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline pt-1"><Plus className="h-4 w-4" /> Add column</button>
+            <p className="text-xs text-slate-400 pt-1">The <strong>Done</strong> column powers completed styling and can be renamed but not removed. Deleting a column moves its tasks to the first column.</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 mt-2">
+            <Button type="button" variant="outline" onClick={() => setColsOpen(false)}>Cancel</Button>
+            <Button type="button" onClick={saveColumns}>Save</Button>
           </div>
         </DialogContent>
       </Dialog>

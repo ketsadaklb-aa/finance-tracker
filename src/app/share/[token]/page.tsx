@@ -177,7 +177,7 @@ export default function SharePage({ params }: { params: Promise<{ token: string 
           <Section title={T.ap} items={d.payables} isAR={false} T={T} onDoc={openDoc} />
 
           <p className="text-[10px] text-slate-400 mt-8 pt-3 border-t border-slate-100">
-            {T.generated} {fmtDate(d.generatedAt)} · Catdy&apos;s AR AP Tracker
+            {T.generated} {fmtDate(d.generatedAt)} · Super Personal ERP
           </p>
         </div>
       </div>

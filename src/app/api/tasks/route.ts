@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   const title = typeof b.title === "string" ? b.title.trim() : "";
   if (!title) return NextResponse.json({ error: "Title is required" }, { status: 400 });
 
-  const status = ["todo", "doing", "done"].includes(b.status) ? b.status : "todo";
+  const status = typeof b.status === "string" && b.status.trim() ? b.status.trim() : "todo";
   const last = await prisma.task.findFirst({
     where: { ownerId: session.user.id, status },
     orderBy: { order: "desc" },
