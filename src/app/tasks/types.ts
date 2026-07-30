@@ -57,18 +57,11 @@ export const DEFAULT_COLUMNS: BoardColumn[] = [
   { id: "done",     label: "Done",              row: 1 },
 ];
 
-const COLUMN_PALETTE = [
-  { accent: "border-t-slate-300",  dot: "bg-slate-400" },
-  { accent: "border-t-blue-400",   dot: "bg-blue-500" },
-  { accent: "border-t-violet-400", dot: "bg-violet-500" },
-  { accent: "border-t-amber-400",  dot: "bg-amber-500" },
-  { accent: "border-t-rose-400",   dot: "bg-rose-500" },
-  { accent: "border-t-cyan-400",   dot: "bg-cyan-500" },
-];
-// "done" always reads as completed (green); others cycle a palette by position.
+// Soft, muted dot per column — a gentle identifier, not a loud accent.
+const COLUMN_DOTS = ["bg-slate-400", "bg-sky-400", "bg-indigo-400", "bg-amber-400", "bg-rose-400", "bg-teal-400"];
+// "done" always reads as completed (green); others cycle a muted palette by position.
 export function columnStyle(id: string, index: number) {
-  if (id === "done") return { accent: "border-t-emerald-400", dot: "bg-emerald-500" };
-  return COLUMN_PALETTE[index % COLUMN_PALETTE.length];
+  return { dot: id === "done" ? "bg-emerald-500" : COLUMN_DOTS[index % COLUMN_DOTS.length] };
 }
 
 export const PRIORITY: Record<TaskPriority, { label: string; dot: string; chip: string }> = {

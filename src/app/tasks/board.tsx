@@ -46,7 +46,7 @@ function Column({
   const { setNodeRef, isOver } = useDroppable({ id: col.id });
   const style = columnStyle(col.id, index);
   return (
-    <div className={`flex flex-col rounded-2xl bg-slate-50 border-t-4 ${style.accent} min-h-[120px] w-full`}>
+    <div className="flex flex-col rounded-2xl bg-slate-50/70 border border-slate-200/70 min-h-[120px] w-full">
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`h-2 w-2 rounded-full shrink-0 ${style.dot}`} />
