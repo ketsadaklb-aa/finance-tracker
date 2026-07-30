@@ -112,6 +112,8 @@ export function WeekGrid({ mode, tasks, onOpen, onSchedule }: {
   const allDay = (d: Date) => tasks.filter(t => dueYmd(t.dueDate) === ymd(d) && !t.dueTime);
   const unscheduled = tasks.filter(t => !t.dueDate && t.status !== "done");
   const hours = Array.from({ length: (DAY_END - DAY_START) / 60 }, (_, i) => DAY_START / 60 + i);
+  const nowMin = today.getHours() * 60 + today.getMinutes();
+  const todayYmd = ymd(today);
   const label = mode === "day"
     ? cursor.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })
     : `${days[0].toLocaleDateString("en-GB", { day: "2-digit", month: "short" })} – ${days[6].toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}`;
@@ -158,11 +160,15 @@ export function WeekGrid({ mode, tasks, onOpen, onSchedule }: {
         <div className="flex border-b border-slate-100 bg-slate-50">
           <div className="w-12 shrink-0" />
           {days.map((d, i) => {
-            const isToday = ymd(d) === ymd(today);
+            const isToday = ymd(d) === todayYmd;
             return (
-              <div key={i} className="flex-1 text-center py-2 border-l border-slate-100">
-                <div className="text-[11px] text-slate-400">{d.toLocaleDateString("en-GB", { weekday: "short" })}</div>
-                <div className={`text-sm font-semibold ${isToday ? "text-blue-600" : "text-slate-600"}`}>{d.getDate()}</div>
+              <div key={i} className={`flex-1 text-center py-2 border-l border-slate-100 ${isToday ? "bg-blue-50" : ""}`}>
+                <div className={`text-[11px] ${isToday ? "text-blue-600 font-semibold" : "text-slate-400"}`}>{d.toLocaleDateString("en-GB", { weekday: "short" })}</div>
+                {isToday ? (
+                  <div className="mx-auto mt-0.5 w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-sm shadow-blue-600/30">{d.getDate()}</div>
+                ) : (
+                  <div className="text-sm font-semibold text-slate-600">{d.getDate()}</div>
+                )}
               </div>
             );
           })}
@@ -172,7 +178,7 @@ export function WeekGrid({ mode, tasks, onOpen, onSchedule }: {
         <div className="flex border-b border-slate-100 bg-white min-h-[34px]">
           <div className="w-12 shrink-0 text-[10px] text-slate-400 flex items-center justify-center">all-day</div>
           {days.map((d, i) => (
-            <div key={i} className="flex-1 border-l border-slate-100 p-1 space-y-1">
+            <div key={i} className={`flex-1 border-l border-slate-100 p-1 space-y-1 ${ymd(d) === todayYmd ? "bg-blue-50/60" : ""}`}>
               {allDay(d).map(t => (
                 <div key={t.id} onPointerDown={e => startPlace(e, t)}
                   className={`text-[11px] rounded px-1.5 py-0.5 cursor-grab active:cursor-grabbing border ${t.status === "done" ? "line-through text-slate-400 bg-slate-50" : "bg-white text-slate-700 border-slate-200"}`}>
@@ -200,9 +206,17 @@ export function WeekGrid({ mode, tasks, onOpen, onSchedule }: {
               {days.map((d, dayIdx) => {
                 const blocks = timed(d).filter(t => !(preview && preview.taskId === t.id));
                 const ghost = preview && preview.dayIndex === dayIdx ? preview : null;
+                const isToday = ymd(d) === todayYmd;
                 return (
-                  <div key={dayIdx} className="flex-1 relative border-l border-slate-100"
+                  <div key={dayIdx} className={`flex-1 relative border-l border-slate-100 ${isToday ? "bg-blue-50/40" : ""}`}
                     style={{ backgroundImage: `repeating-linear-gradient(#f1f5f9 0 1px, transparent 1px ${HOUR_H}px)` }}>
+                    {isToday && nowMin >= DAY_START && nowMin <= DAY_END && (
+                      <div className="absolute left-0 right-0 z-30 pointer-events-none" style={{ top: (nowMin - DAY_START) * PXM }}>
+                        <div className="relative h-px bg-red-500">
+                          <div className="absolute -left-1 -top-[3px] w-2 h-2 rounded-full bg-red-500" />
+                        </div>
+                      </div>
+                    )}
                     {blocks.map(t => (
                       <Block key={t.id} task={t}
                         start={hmToMin(t.dueTime) ?? DAY_START} duration={t.durationMin ?? 60}
