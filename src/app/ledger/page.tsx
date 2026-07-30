@@ -115,7 +115,7 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     payment:    "ຊຳລະ",
     total:      "ລວມ",
     no_desc:    "(ບໍ່ມີລາຍລະອຽດ)",
-    footer:     "Super Personal ERP — ເອກະສານລັບ",
+    footer:     "Super Personal App — ເອກະສານລັບ",
   } : {
     statement:  "AR / AP Statement",
     date_label: "Date",
@@ -141,7 +141,7 @@ function buildStatementHTML(contact: Contact, ar: ARItem[], ap: APItem[], lang: 
     payment:    "Payment",
     total:      "TOTAL",
     no_desc:    "(No description)",
-    footer:     "Super Personal ERP — Confidential",
+    footer:     "Super Personal App — Confidential",
   };
 
   const num = (v: number) => Math.round(v).toLocaleString("en-US");

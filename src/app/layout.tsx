@@ -10,8 +10,8 @@ import { seedCurrenciesAndCategories } from "@/lib/seed";
 const geist = Geist({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Super Personal ERP",
-  description: "Super Personal ERP — Tasks & Finance",
+  title: "Super Personal App",
+  description: "Super Personal App — Tasks & Finance",
 };
 
 export const viewport = {
