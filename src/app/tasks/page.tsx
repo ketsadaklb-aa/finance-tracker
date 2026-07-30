@@ -1,0 +1,400 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Plus, LayoutGrid, CalendarDays, ListChecks, Trash2, MessageSquare, Loader2,
+  Bell, Search, Archive, Paperclip, FileText, X, Check, Upload,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/toast";
+import {
+  Task, TaskStatus, TaskPriority, ChecklistItem, Attachment, UserLite,
+  COLUMNS, PRIORITY, ymd,
+} from "./types";
+import { Board } from "./board";
+import { Calendar } from "./calendar";
+import { Agenda } from "./agenda";
+import { useReminders, requestNotificationPermission } from "./use-reminders";
+
+const UNASSIGNED = "unassigned";
+const emptyForm = (status: TaskStatus = "todo") => ({
+  title: "", description: "", priority: "medium" as TaskPriority, status,
+  dueDate: "", dueTime: "", assigneeId: "",
+});
+const uid = () => (crypto?.randomUUID?.() ?? `id-${Math.round(performance.now() * 1000)}`);
+
+export default function TasksPage() {
+  const { toast } = useToast();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [users, setUsers] = useState<UserLite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<"board" | "calendar" | "agenda">("board");
+
+  // Filters
+  const [search, setSearch] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  const [remindersOn, setRemindersOn] = useState(false);
+
+  // Editor
+  const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyForm());
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [newItem, setNewItem] = useState("");
+  const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [viewer, setViewer] = useState<Attachment | null>(null);
+
+  const editingTask = editingId ? tasks.find(t => t.id === editingId) ?? null : null;
+
+  useEffect(() => { load(); loadUsers(); }, []);
+  useReminders(tasks, remindersOn);
+
+  async function load() {
+    setLoading(true);
+    const r = await fetch("/api/tasks");
+    if (r.ok) setTasks(await r.json());
+    setLoading(false);
+  }
+  async function loadUsers() {
+    const r = await fetch("/api/users");
+    if (r.ok) setUsers(await r.json());
+  }
+
+  // ── Editor open/close ───────────────────────────────────────────────────────
+  function openNew(status: TaskStatus = "todo") {
+    setEditingId(null); setForm(emptyForm(status));
+    setChecklist([]); setAttachments([]); setNewItem(""); setComment(""); setOpen(true);
+  }
+  function openEdit(t: Task) {
+    setEditingId(t.id);
+    setForm({
+      title: t.title, description: t.description ?? "", priority: t.priority, status: t.status,
+      dueDate: t.dueDate ? ymd(new Date(t.dueDate)) : "", dueTime: t.dueTime ?? "", assigneeId: t.assignee?.id ?? "",
+    });
+    setChecklist(t.checklist ?? []); setAttachments(t.attachments ?? []);
+    setNewItem(""); setComment(""); setOpen(true);
+  }
+
+  async function save() {
+    if (!form.title.trim()) { toast("Title is required", "error"); return; }
+    setSaving(true);
+    const payload = {
+      title: form.title.trim(), description: form.description.trim() || null,
+      priority: form.priority, status: form.status,
+      dueDate: form.dueDate || null, dueTime: form.dueDate && form.dueTime ? form.dueTime : null,
+      assigneeId: form.assigneeId || null, checklist, attachments,
+    };
+    const r = editingId
+      ? await fetch(`/api/tasks/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+      : await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    setSaving(false);
+    if (!r.ok) { toast("Save failed", "error"); return; }
+    const saved: Task = await r.json();
+    setTasks(prev => editingId ? prev.map(t => t.id === saved.id ? saved : t) : [...prev, saved]);
+    toast(editingId ? "Task updated" : "Task created");
+    setOpen(false);
+  }
+
+  async function remove(id: string) {
+    setTasks(prev => prev.filter(t => t.id !== id));
+    setOpen(false);
+    const r = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+    if (!r.ok) { toast("Delete failed", "error"); load(); } else toast("Task deleted");
+  }
+
+  // ── Drag persistence ────────────────────────────────────────────────────────
+  async function move(taskId: string, status: TaskStatus, order: number) {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status, order } : t));
+    const r = await fetch(`/api/tasks/${taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, order }) });
+    if (!r.ok) { toast("Move failed", "error"); load(); }
+  }
+  async function reschedule(taskId: string, date: string | null) {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, dueDate: date ? `${date}T12:00:00` : null } : t));
+    const r = await fetch(`/api/tasks/${taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dueDate: date }) });
+    if (!r.ok) { toast("Reschedule failed", "error"); load(); }
+  }
+  async function toggleDone(t: Task) {
+    const status: TaskStatus = t.status === "done" ? "todo" : "done";
+    setTasks(prev => prev.map(x => x.id === t.id ? { ...x, status } : x));
+    await fetch(`/api/tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+  }
+
+  async function addComment() {
+    if (!editingId || !comment.trim()) return;
+    const body = comment.trim(); setComment("");
+    const r = await fetch(`/api/tasks/${editingId}/comments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) });
+    if (!r.ok) { toast("Couldn't add comment", "error"); return; }
+    const c = await r.json();
+    setTasks(prev => prev.map(t => t.id === editingId ? { ...t, comments: [...t.comments, c] } : t));
+  }
+
+  async function archiveDone() {
+    const r = await fetch("/api/tasks/archive-done", { method: "POST" });
+    if (!r.ok) { toast("Failed to clear", "error"); return; }
+    const { archived } = await r.json();
+    setTasks(prev => prev.filter(t => t.status !== "done"));
+    toast(archived ? `Archived ${archived} done task${archived > 1 ? "s" : ""}` : "Nothing to clear");
+  }
+
+  async function enableReminders() {
+    const ok = await requestNotificationPermission();
+    setRemindersOn(ok);
+    toast(ok ? "Reminders on — you'll be notified of due tasks" : "Notifications blocked in browser", ok ? "success" : "error");
+  }
+
+  // ── Checklist + attachments (editor-local until save) ────────────────────────
+  const addItem = () => { if (newItem.trim()) { setChecklist(c => [...c, { id: uid(), text: newItem.trim(), done: false }]); setNewItem(""); } };
+  const toggleItem = (id: string) => setChecklist(c => c.map(i => i.id === id ? { ...i, done: !i.done } : i));
+  const removeItem = (id: string) => setChecklist(c => c.filter(i => i.id !== id));
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []); e.target.value = "";
+    if (!files.length) return;
+    setUploading(true);
+    for (const file of files) {
+      const fd = new FormData(); fd.append("file", file);
+      const r = await fetch("/api/upload", { method: "POST", body: fd });
+      if (r.ok) { const { url } = await r.json(); setAttachments(a => [...a, { id: uid(), name: file.name, url, type: file.type }]); }
+      else toast(`Couldn't upload ${file.name}`, "error");
+    }
+    setUploading(false);
+  }
+  const removeAttachment = (id: string) => setAttachments(a => a.filter(x => x.id !== id));
+
+  // ── Derived ─────────────────────────────────────────────────────────────────
+  const filtered = tasks.filter(t => {
+    if (search && !`${t.title} ${t.description ?? ""}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
+    if (assigneeFilter === UNASSIGNED && t.assignee) return false;
+    if (assigneeFilter !== "all" && assigneeFilter !== UNASSIGNED && t.assignee?.id !== assigneeFilter) return false;
+    return true;
+  });
+  const doneChecklist = checklist.filter(i => i.done).length;
+
+  const VIEWS = [
+    { key: "board", label: "Board", icon: LayoutGrid },
+    { key: "calendar", label: "Calendar", icon: CalendarDays },
+    { key: "agenda", label: "Agenda", icon: ListChecks },
+  ] as const;
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Tasks</h1>
+          <p className="text-sm text-slate-400">Plan work, attach documents, and drag to reschedule.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={enableReminders} title="Enable due-date reminders"
+            className={`p-2 rounded-xl border ${remindersOn ? "border-blue-200 text-blue-600 bg-blue-50" : "border-slate-200 text-slate-400 hover:text-slate-600"}`}>
+            <Bell className="h-4 w-4" />
+          </button>
+          <Button onClick={() => openNew()}><Plus className="h-4 w-4 mr-1.5" /> New task</Button>
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 mb-5 flex-wrap">
+        <div className="flex rounded-xl border border-slate-200 overflow-hidden">
+          {VIEWS.map(v => (
+            <button key={v.key} onClick={() => setView(v.key)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium ${view === v.key ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>
+              <v.icon className="h-4 w-4" /> {v.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative">
+          <Search className="h-4 w-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <Input placeholder="Search tasks…" value={search} onChange={e => setSearch(e.target.value)} className="pl-8 w-44" />
+        </div>
+        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+          <SelectTrigger className="w-auto"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All priorities</SelectItem>
+            {(Object.keys(PRIORITY) as TaskPriority[]).map(p => <SelectItem key={p} value={p}>{PRIORITY[p].label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+          <SelectTrigger className="w-auto"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Anyone</SelectItem>
+            <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+            {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <button onClick={archiveDone} title="Archive done tasks"
+          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 px-2 py-2 ml-auto">
+          <Archive className="h-4 w-4" /> Clear done
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-slate-300" /></div>
+      ) : view === "board" ? (
+        <Board tasks={filtered} onOpen={openEdit} onAdd={openNew} onMove={move} />
+      ) : view === "calendar" ? (
+        <Calendar tasks={filtered} onOpen={openEdit} onReschedule={reschedule} />
+      ) : (
+        <Agenda tasks={filtered} onOpen={openEdit} onToggleDone={toggleDone} />
+      )}
+
+      {/* Editor */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editingId ? "Edit task" : "New task"}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Title</Label>
+              <Input autoFocus placeholder="What needs doing?" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Description</Label>
+              <Textarea placeholder="Details, links…" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Status</Label>
+                <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v as TaskStatus }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{COLUMNS.map(c => <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Priority</Label>
+                <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v as TaskPriority }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{(Object.keys(PRIORITY) as TaskPriority[]).map(p => <SelectItem key={p} value={p}>{PRIORITY[p].label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5 col-span-2">
+                <Label>Assignee</Label>
+                <Select value={form.assigneeId || UNASSIGNED} onValueChange={v => setForm(f => ({ ...f, assigneeId: v === UNASSIGNED ? "" : v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                    {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Time</Label>
+                <Input type="time" value={form.dueTime} disabled={!form.dueDate} onChange={e => setForm(f => ({ ...f, dueTime: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Due date</Label>
+              <Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} />
+            </div>
+
+            {/* Checklist */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5" /> Checklist {checklist.length > 0 && <span className="text-slate-400 font-normal">{doneChecklist}/{checklist.length}</span>}</Label>
+              {checklist.map(item => (
+                <div key={item.id} className="flex items-center gap-2">
+                  <button type="button" onClick={() => toggleItem(item.id)}
+                    className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${item.done ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-300 text-transparent"}`}>
+                    <Check className="h-3 w-3" />
+                  </button>
+                  <input value={item.text} onChange={e => setChecklist(c => c.map(i => i.id === item.id ? { ...i, text: e.target.value } : i))}
+                    className={`flex-1 text-sm bg-transparent outline-none border-b border-transparent focus:border-slate-200 ${item.done ? "line-through text-slate-400" : "text-slate-700"}`} />
+                  <button type="button" onClick={() => removeItem(item.id)} className="text-slate-300 hover:text-red-500"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <Input placeholder="Add a subtask…" value={newItem} onChange={e => setNewItem(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addItem(); } }} />
+                <Button type="button" variant="outline" onClick={addItem} disabled={!newItem.trim()}>Add</Button>
+              </div>
+            </div>
+
+            {/* Documents */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5"><Paperclip className="h-3.5 w-3.5" /> Documents</Label>
+              {attachments.map(a => (
+                <div key={a.id} className="flex items-center gap-2 text-sm">
+                  <FileText className="h-4 w-4 text-slate-400 shrink-0" />
+                  <button type="button" onClick={() => setViewer(a)} className="text-blue-600 hover:underline truncate flex-1 text-left">{a.name}</button>
+                  <button type="button" onClick={() => removeAttachment(a.id)} className="text-slate-300 hover:text-red-500"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              ))}
+              <label className="flex items-center gap-3 cursor-pointer border border-dashed border-slate-200 rounded-lg px-3 py-2.5 hover:bg-slate-50">
+                {uploading ? <Loader2 className="h-4 w-4 text-blue-500 animate-spin shrink-0" /> : <Upload className="h-4 w-4 text-slate-400 shrink-0" />}
+                <span className="text-sm text-slate-500">{uploading ? "Uploading…" : "Attach JPG, PNG, or PDF"}</span>
+                <input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={handleUpload} />
+              </label>
+            </div>
+
+            {/* Comments (edit mode only) */}
+            {editingTask && (
+              <div className="space-y-2 pt-1">
+                <Label className="flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5" /> Comments</Label>
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                  {editingTask.comments.length === 0 && <p className="text-xs text-slate-400">No comments yet.</p>}
+                  {editingTask.comments.map(c => (
+                    <div key={c.id} className="rounded-lg bg-slate-50 px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-slate-600">{c.author.name}</span>
+                        <span className="text-[10px] text-slate-400">{new Date(c.createdAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                      </div>
+                      <p className="text-sm text-slate-700 whitespace-pre-wrap mt-0.5">{c.body}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input placeholder="Add a comment…" value={comment} onChange={e => setComment(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addComment(); } }} />
+                  <Button type="button" variant="outline" onClick={addComment} disabled={!comment.trim()}>Post</Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-2">
+            {editingId ? (
+              <Button type="button" variant="outline" onClick={() => remove(editingId)} className="text-red-600 border-red-200 hover:bg-red-50">
+                <Trash2 className="h-4 w-4 mr-1.5" /> Delete
+              </Button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button type="button" onClick={save} disabled={saving || uploading || !form.title.trim()}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingId ? "Save" : "Create"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Attachment viewer */}
+      {viewer && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={() => setViewer(null)}>
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <span className="text-sm font-medium text-slate-700 truncate">{viewer.name}</span>
+              <div className="flex items-center gap-3">
+                <a href={viewer.url} download={viewer.name} className="text-xs text-blue-600 hover:underline">Download</a>
+                <button onClick={() => setViewer(null)}><X className="h-4 w-4 text-slate-400" /></button>
+              </div>
+            </div>
+            <div className="overflow-auto p-2 bg-slate-50">
+              {viewer.type.startsWith("image/")
+                ? <img src={viewer.url} alt={viewer.name} className="max-w-full mx-auto rounded" />
+                : <iframe src={viewer.url} className="w-full h-[70vh] rounded" title={viewer.name} />}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
