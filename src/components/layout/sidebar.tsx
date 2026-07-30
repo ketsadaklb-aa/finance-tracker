@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, ArrowUpDown, Users,
-  BookOpen, Wallet, DollarSign, Menu, X, LogOut, Shield, ListChecks,
+  BookOpen, Wallet, DollarSign, Menu, X, LogOut, Shield, ListChecks, PenLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,11 +15,13 @@ const adminNav = [
   { href: "/contacts",     label: "Contacts",          icon: Users },
   { href: "/ledger",       label: "AR / AP Ledger",    icon: BookOpen },
   { href: "/tasks",        label: "Tasks",             icon: ListChecks },
+  { href: "/notes",        label: "Notes",             icon: PenLine },
 ];
 
 const memberNav = [
   { href: "/ledger", label: "AR / AP Ledger", icon: BookOpen },
   { href: "/tasks",  label: "Tasks",          icon: ListChecks },
+  { href: "/notes",  label: "Notes",          icon: PenLine },
 ];
 
 function Logo() {

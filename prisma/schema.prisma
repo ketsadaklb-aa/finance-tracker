@@ -37,6 +37,7 @@ model User {
   tasks         Task[]        @relation("TaskOwner")
   assignedTasks Task[]        @relation("TaskAssignee")
   taskComments  TaskComment[]
+  notes         Note[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -254,6 +255,20 @@ model Task {
   @@index([ownerId, status])
   @@index([ownerId, dueDate])
   @@index([assigneeId])
+}
+
+// ─── Notes canvas (Excalidraw) ───────────────────────────────────────────────
+model Note {
+  id        String   @id @default(cuid())
+  title     String   @default("Untitled")
+  data      Json?    // Excalidraw scene: { elements, appState, files }
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
 }
 
 model TaskComment {
