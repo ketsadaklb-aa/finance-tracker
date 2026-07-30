@@ -11,7 +11,7 @@ const SLOT = 30;               // snap minutes
 const GRID_H = (DAY_END - DAY_START) * PXM;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-export interface SchedulePatch { dueDate?: string; dueTime?: string | null; durationMin?: number | null }
+export interface SchedulePatch { dueDate?: string | null; dueTime?: string | null; durationMin?: number | null }
 
 type Drag =
   | { kind: "move"; task: Task; grab: number; duration: number }
@@ -40,8 +40,15 @@ export function WeekGrid({ mode, tasks, onOpen, onSchedule }: {
   const [preview, setPreview] = useState<Preview | null>(null);
   const previewRef = useRef<Preview | null>(null);
   const movedRef = useRef(false);
+  const backlogRef = useRef<HTMLDivElement>(null);
+  const [overBacklog, setOverBacklog] = useState(false);
+  const overBacklogRef = useRef(false);
 
   const setPrev = (p: Preview | null) => { previewRef.current = p; setPreview(p); };
+  const overBacklogArea = (e: PointerEvent) => {
+    const r = backlogRef.current?.getBoundingClientRect();
+    return !!r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  };
 
   // Locate the day column + snapped minute under the pointer.
   function locate(e: PointerEvent) {
@@ -57,6 +64,8 @@ export function WeekGrid({ mode, tasks, onOpen, onSchedule }: {
     if (!drag) return;
     const onMove = (e: PointerEvent) => {
       movedRef.current = true;
+      const ob = drag.kind !== "resize" && overBacklogArea(e);
+      overBacklogRef.current = ob; setOverBacklog(ob);
       const { dayIndex, min } = locate(e);
       if (drag.kind === "resize") {
         const dur = clamp(Math.round((min - drag.startMin) / SLOT) * SLOT, SLOT, DAY_END - drag.startMin);
@@ -69,10 +78,11 @@ export function WeekGrid({ mode, tasks, onOpen, onSchedule }: {
     };
     const onUp = () => {
       const p = previewRef.current;
-      if (!movedRef.current || !p) { onOpen(drag.task); }
+      if (!movedRef.current || !p) onOpen(drag.task);
+      else if (overBacklogRef.current && drag.kind !== "resize") onSchedule(drag.task.id, { dueDate: null, dueTime: null, durationMin: null });
       else if (drag.kind === "resize") onSchedule(drag.task.id, { durationMin: p.durationMin });
       else onSchedule(drag.task.id, { dueDate: ymd(days[p.dayIndex]), dueTime: minToHm(p.startMin), durationMin: p.durationMin });
-      setDrag(null); setPrev(null);
+      setDrag(null); setPrev(null); overBacklogRef.current = false; setOverBacklog(false);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -117,13 +127,16 @@ export function WeekGrid({ mode, tasks, onOpen, onSchedule }: {
         </div>
       </div>
 
-      {/* Unscheduled backlog — drag a chip down onto a time slot to schedule it */}
-      <div className="mb-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-2">
+      {/* Unscheduled backlog — drag chips onto the grid to schedule, or drag blocks back here to unschedule */}
+      <div ref={backlogRef}
+        className={`mb-3 rounded-xl border border-dashed p-2 transition-colors ${overBacklog ? "border-blue-400 bg-blue-50 ring-2 ring-blue-200" : "border-slate-200 bg-slate-50"}`}>
         <div className="flex items-center gap-2 mb-1.5 px-1">
           <Inbox className="h-3.5 w-3.5 text-slate-400" />
           <span className="text-xs font-semibold text-slate-500">Unscheduled</span>
           <span className="text-[11px] text-slate-400">{unscheduled.length}</span>
-          <span className="text-[11px] text-slate-400 ml-auto hidden sm:inline">drag onto the grid to schedule</span>
+          <span className="text-[11px] text-slate-400 ml-auto hidden sm:inline">
+            {overBacklog ? "release to unschedule" : "drag onto the grid to schedule · drag a block here to unschedule"}
+          </span>
         </div>
         {unscheduled.length === 0 ? (
           <p className="text-[11px] text-slate-400 px-1 pb-0.5">No unscheduled tasks.</p>
@@ -195,7 +208,7 @@ export function WeekGrid({ mode, tasks, onOpen, onSchedule }: {
                         start={hmToMin(t.dueTime) ?? DAY_START} duration={t.durationMin ?? 60}
                         onMove={e => startMove(e, t)} onResize={e => startResize(e, t)} />
                     ))}
-                    {ghost && (() => {
+                    {ghost && !overBacklog && (() => {
                       const t = tasks.find(x => x.id === ghost.taskId);
                       return t ? <Block task={t} start={ghost.startMin} duration={ghost.durationMin} preview /> : null;
                     })()}
