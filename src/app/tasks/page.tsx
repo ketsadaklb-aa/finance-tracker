@@ -130,19 +130,23 @@ export default function TasksPage() {
 
   const addTag = (raw: string) => {
     const tag = raw.trim();
-    if (tag && !tags.some(x => x.toLowerCase() === tag.toLowerCase())) setTags(ts => [...ts, tag]);
+    if (tag) setTags(ts => ts.some(x => x.toLowerCase() === tag.toLowerCase()) ? ts : [...ts, tag]);
     setNewTag("");
   };
   const removeTag = (tag: string) => setTags(ts => ts.filter(t => t !== tag));
 
   async function save() {
     if (!form.title.trim()) { toast("Title is required", "error"); return; }
+    // Include a tag still typed in the box (user may not have pressed Enter)
+    const pending = newTag.trim();
+    const finalTags = pending && !tags.some(x => x.toLowerCase() === pending.toLowerCase()) ? [...tags, pending] : tags;
+    setTags(finalTags); setNewTag("");
     setSaving(true);
     const payload = {
       title: form.title.trim(), description: form.description.trim() || null,
       priority: form.priority, status: form.status,
       dueDate: form.dueDate || null, dueTime: form.dueDate && form.dueTime ? form.dueTime : null,
-      assigneeId: form.assigneeId || null, checklist, attachments, tags,
+      assigneeId: form.assigneeId || null, checklist, attachments, tags: finalTags,
     };
     const r = editingId
       ? await fetch(`/api/tasks/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
@@ -389,10 +393,14 @@ export default function TasksPage() {
                   ))}
                 </div>
               )}
-              <Input list="task-tag-suggestions" value={newTag}
-                onChange={e => setNewTag(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(newTag); } }}
-                placeholder="Type a company or project, press Enter…" />
+              <div className="flex gap-2">
+                <Input list="task-tag-suggestions" value={newTag}
+                  onChange={e => setNewTag(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(newTag); } }}
+                  onBlur={() => { if (newTag.trim()) addTag(newTag); }}
+                  placeholder="Type a company or project, press Enter…" />
+                <Button type="button" variant="outline" onClick={() => addTag(newTag)} disabled={!newTag.trim()}>Add</Button>
+              </div>
               <datalist id="task-tag-suggestions">
                 {allTags.filter(t => !tags.some(x => x.toLowerCase() === t.toLowerCase())).map(t => <option key={t} value={t} />)}
               </datalist>
