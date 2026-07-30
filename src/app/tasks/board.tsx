@@ -1,9 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
 import {
-  DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, closestCorners, useDroppable,
+  DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, closestCorners, pointerWithin, useDroppable,
 } from "@dnd-kit/core";
-import type { DragStartEvent, DragOverEvent, DragEndEvent, UniqueIdentifier } from "@dnd-kit/core";
+import type { DragStartEvent, DragOverEvent, DragEndEvent, UniqueIdentifier, CollisionDetection } from "@dnd-kit/core";
+
+// Pointer-first: drop into the column the cursor is over (works across rows).
+// Falls back to closest-corners when the pointer is in a gap.
+const boardCollision: CollisionDetection = args => {
+  const pointer = pointerWithin(args);
+  return pointer.length > 0 ? pointer : closestCorners(args);
+};
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Plus } from "lucide-react";
@@ -135,13 +142,13 @@ export function Board({
   }
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCorners}
+    <DndContext sensors={sensors} collisionDetection={boardCollision}
       onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
       <div className="space-y-3">
         {[...new Set(columns.map(c => c.row ?? 1))].sort((a, b) => a - b).map(rowNum => (
-          <div key={rowNum} className="flex gap-3 overflow-x-auto pb-1">
+          <div key={rowNum} className="flex gap-3 items-start">
             {columns.map((col, i) => (col.row ?? 1) === rowNum ? (
-              <div key={col.id} className="flex-1 min-w-[240px]">
+              <div key={col.id} className="flex-1 min-w-0">
                 <Column col={col} index={i} items={cols[col.id] ?? []} onOpen={onOpen} onAdd={onAdd} />
               </div>
             ) : null)}
