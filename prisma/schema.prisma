@@ -36,7 +36,7 @@ model User {
   contactAccess ContactAccess[]
   boardColumns  Json?         // custom kanban columns: [{ id, label }]
   tasks         Task[]        @relation("TaskOwner")
-  assignedTasks Task[]        @relation("TaskAssignee")
+  taskAssignees TaskAssignee[]
   taskComments  TaskComment[]
   notes         Note[]
 
@@ -248,8 +248,7 @@ model Task {
   archivedAt  DateTime?                       // set when cleared from the board
   ownerId     String
   owner       User      @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  assigneeId  String?
-  assignee    User?     @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  assignees   TaskAssignee[]
   comments    TaskComment[]
 
   createdAt DateTime @default(now())
@@ -257,7 +256,17 @@ model Task {
 
   @@index([ownerId, status])
   @@index([ownerId, dueDate])
-  @@index([assigneeId])
+}
+
+model TaskAssignee {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([userId])
 }
 
 // ─── Notes canvas (Excalidraw) ───────────────────────────────────────────────

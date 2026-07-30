@@ -72,11 +72,15 @@ export function Agenda({ tasks, onOpen, onToggleDone }: {
                       <CalendarDays className="h-3 w-3" />{fmtDay(t.dueDate)}{t.dueTime ? ` ${t.dueTime}` : ""}
                     </span>
                   )}
-                  {t.assignee && (
-                    <span title={t.assignee.name}
-                      className="shrink-0 h-6 w-6 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center">
-                      {initials(t.assignee.name)}
-                    </span>
+                  {t.assignees.length > 0 && (
+                    <div className="flex -space-x-1.5 shrink-0">
+                      {t.assignees.slice(0, 3).map(a => (
+                        <span key={a.user.id} title={a.user.name}
+                          className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center ring-2 ring-white">
+                          {initials(a.user.name)}
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
               );

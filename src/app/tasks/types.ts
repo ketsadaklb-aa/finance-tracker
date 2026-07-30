@@ -27,7 +27,7 @@ export interface Task {
   attachments: Attachment[] | null;
   tags: string[] | null;
   archivedAt: string | null;
-  assignee: UserLite | null;
+  assignees: { user: UserLite }[];
   owner: UserLite;
   order: number;
   comments: TaskComment[];

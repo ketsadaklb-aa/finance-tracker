@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const tasks = await prisma.task.findMany({
     where: {
       AND: [
-        { OR: [{ ownerId: me }, { assigneeId: me }] },
+        { OR: [{ ownerId: me }, { assignees: { some: { userId: me } } }] },
         archived ? { NOT: { archivedAt: null } } : { archivedAt: null },
       ],
     },
@@ -21,6 +21,13 @@ export async function GET(req: NextRequest) {
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],
   });
   return NextResponse.json(tasks);
+}
+
+// Accepts a list of user ids; returns Prisma nested-create rows (deduped).
+function assigneeCreate(ids: unknown) {
+  if (!Array.isArray(ids)) return undefined;
+  const unique = [...new Set(ids.filter((v): v is string => typeof v === "string" && !!v))];
+  return unique.length ? { create: unique.map(userId => ({ userId })) } : undefined;
 }
 
 // POST — create a task (owned by the creator). Drops to the bottom of its column.
@@ -48,7 +55,7 @@ export async function POST(req: NextRequest) {
       dueDate: b.dueDate ? new Date(b.dueDate) : null,
       dueTime: b.dueTime || null,
       durationMin: typeof b.durationMin === "number" ? b.durationMin : undefined,
-      assigneeId: b.assigneeId || null,
+      assignees: assigneeCreate(b.assigneeIds),
       checklist: Array.isArray(b.checklist) ? b.checklist : undefined,
       attachments: Array.isArray(b.attachments) ? b.attachments : undefined,
       tags: Array.isArray(b.tags) ? b.tags : undefined,

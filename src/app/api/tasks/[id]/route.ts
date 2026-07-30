@@ -7,10 +7,14 @@ import { taskInclude } from "@/lib/task-include";
 async function access(id: string, mode: "edit" | "delete") {
   const session = await getSession();
   if (!session) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  const task = await prisma.task.findUnique({ where: { id }, select: { ownerId: true, assigneeId: true } });
+  const task = await prisma.task.findUnique({
+    where: { id },
+    select: { ownerId: true, assignees: { select: { userId: true } } },
+  });
   if (!task) return { error: NextResponse.json({ error: "Not found" }, { status: 404 }) };
   const me = session.user.id;
-  const allowed = mode === "delete" ? task.ownerId === me : task.ownerId === me || task.assigneeId === me;
+  const isAssignee = task.assignees.some(a => a.userId === me);
+  const allowed = mode === "delete" ? task.ownerId === me : task.ownerId === me || isAssignee;
   if (!allowed) return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   return { session };
 }
@@ -29,7 +33,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (b.dueDate !== undefined) data.dueDate = b.dueDate ? new Date(b.dueDate) : null;
   if (b.dueTime !== undefined) data.dueTime = b.dueTime || null;
   if (b.durationMin !== undefined) data.durationMin = typeof b.durationMin === "number" ? b.durationMin : null;
-  if (b.assigneeId !== undefined) data.assigneeId = b.assigneeId || null;
+  if (Array.isArray(b.assigneeIds)) {
+    const unique = [...new Set(b.assigneeIds.filter((v: unknown): v is string => typeof v === "string" && !!v))];
+    data.assignees = { deleteMany: {}, create: unique.map(userId => ({ userId })) };
+  }
   if (b.checklist !== undefined) data.checklist = Array.isArray(b.checklist) ? b.checklist : null;
   if (b.attachments !== undefined) data.attachments = Array.isArray(b.attachments) ? b.attachments : null;
   if (b.tags !== undefined) data.tags = Array.isArray(b.tags) ? b.tags : null;

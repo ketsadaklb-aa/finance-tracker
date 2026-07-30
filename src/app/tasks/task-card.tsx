@@ -22,11 +22,18 @@ export function TaskCard({ task, onClick, dragging }: { task: Task; onClick?: ()
         <p className={`text-sm font-medium leading-snug flex-1 ${task.status === "done" ? "text-slate-400 line-through" : "text-slate-800"}`}>
           {task.title}
         </p>
-        {task.assignee && (
-          <span title={task.assignee.name}
-            className="shrink-0 h-6 w-6 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center">
-            {initials(task.assignee.name)}
-          </span>
+        {task.assignees.length > 0 && (
+          <div className="flex -space-x-1.5 shrink-0">
+            {task.assignees.slice(0, 3).map(a => (
+              <span key={a.user.id} title={a.user.name}
+                className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center ring-2 ring-white">
+                {initials(a.user.name)}
+              </span>
+            ))}
+            {task.assignees.length > 3 && (
+              <span className="h-6 w-6 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold flex items-center justify-center ring-2 ring-white">+{task.assignees.length - 3}</span>
+            )}
+          </div>
         )}
       </div>
       {task.description && (

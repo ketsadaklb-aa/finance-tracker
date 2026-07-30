@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/components/ui/toast";
 import {
   Task, TaskStatus, TaskPriority, ChecklistItem, Attachment, UserLite, BoardColumn,
-  DEFAULT_COLUMNS, PRIORITY, ymd,
+  DEFAULT_COLUMNS, PRIORITY, ymd, initials,
 } from "./types";
 import { Board } from "./board";
 import { Scheduler } from "./scheduler";
@@ -25,7 +25,7 @@ import { useReminders, requestNotificationPermission } from "./use-reminders";
 const UNASSIGNED = "unassigned";
 const emptyForm = (status: TaskStatus = "todo") => ({
   title: "", description: "", priority: "medium" as TaskPriority, status,
-  dueDate: "", dueTime: "", assigneeId: "",
+  dueDate: "", dueTime: "", assigneeIds: [] as string[],
 });
 const uid = () => (crypto?.randomUUID?.() ?? `id-${Math.round(performance.now() * 1000)}`);
 
@@ -122,7 +122,7 @@ export default function TasksPage() {
     setEditingId(t.id);
     setForm({
       title: t.title, description: t.description ?? "", priority: t.priority, status: t.status,
-      dueDate: t.dueDate ? ymd(new Date(t.dueDate)) : "", dueTime: t.dueTime ?? "", assigneeId: t.assignee?.id ?? "",
+      dueDate: t.dueDate ? ymd(new Date(t.dueDate)) : "", dueTime: t.dueTime ?? "", assigneeIds: t.assignees.map(a => a.user.id),
     });
     setChecklist(t.checklist ?? []); setAttachments(t.attachments ?? []); setTags(t.tags ?? []);
     setNewItem(""); setNewTag(""); setComment(""); setOpen(true);
@@ -146,7 +146,7 @@ export default function TasksPage() {
       title: form.title.trim(), description: form.description.trim() || null,
       priority: form.priority, status: form.status,
       dueDate: form.dueDate || null, dueTime: form.dueDate && form.dueTime ? form.dueTime : null,
-      assigneeId: form.assigneeId || null, checklist, attachments, tags: finalTags,
+      assigneeIds: form.assigneeIds, checklist, attachments, tags: finalTags,
     };
     const r = editingId
       ? await fetch(`/api/tasks/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
@@ -243,8 +243,8 @@ export default function TasksPage() {
   const filtered = tasks.filter(t => {
     if (search && !`${t.title} ${t.description ?? ""} ${(t.tags ?? []).join(" ")}`.toLowerCase().includes(search.toLowerCase())) return false;
     if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
-    if (assigneeFilter === UNASSIGNED && t.assignee) return false;
-    if (assigneeFilter !== "all" && assigneeFilter !== UNASSIGNED && t.assignee?.id !== assigneeFilter) return false;
+    if (assigneeFilter === UNASSIGNED && t.assignees.length > 0) return false;
+    if (assigneeFilter !== "all" && assigneeFilter !== UNASSIGNED && !t.assignees.some(a => a.user.id === assigneeFilter)) return false;
     if (tagFilter !== "all" && !(t.tags ?? []).includes(tagFilter)) return false;
     return true;
   });
@@ -359,16 +359,10 @@ export default function TasksPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5 col-span-2">
-                <Label>Assignee</Label>
-                <Select value={form.assigneeId || UNASSIGNED} onValueChange={v => setForm(f => ({ ...f, assigneeId: v === UNASSIGNED ? "" : v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                    {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Due date</Label>
+                <Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <Label>Time</Label>
@@ -376,8 +370,22 @@ export default function TasksPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Due date</Label>
-              <Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} />
+              <Label>Assignees <span className="text-slate-400 font-normal">(pick one or more)</span></Label>
+              <div className="flex flex-wrap gap-1.5">
+                {users.length === 0 && <span className="text-xs text-slate-400">No teammates to assign.</span>}
+                {users.map(u => {
+                  const on = form.assigneeIds.includes(u.id);
+                  return (
+                    <button key={u.id} type="button"
+                      onClick={() => setForm(f => ({ ...f, assigneeIds: on ? f.assigneeIds.filter(id => id !== u.id) : [...f.assigneeIds, u.id] }))}
+                      className={`inline-flex items-center gap-1.5 rounded-full pl-1 pr-2.5 py-1 text-xs font-medium border transition-colors ${on ? "bg-blue-50 border-blue-300 text-blue-700" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"}`}>
+                      <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold ${on ? "bg-blue-500 text-white" : "bg-slate-100 text-slate-500"}`}>{initials(u.name)}</span>
+                      {u.name}
+                      {on && <Check className="h-3 w-3" />}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Tags */}

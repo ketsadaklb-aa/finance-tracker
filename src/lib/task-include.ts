@@ -1,6 +1,6 @@
-// Shared Prisma include for task queries (owner + assignee + comments).
+// Shared Prisma include for task queries (owner + assignees + comments).
 export const taskInclude = {
-  assignee: { select: { id: true, name: true } },
+  assignees: { include: { user: { select: { id: true, name: true } } } },
   owner: { select: { id: true, name: true } },
   comments: {
     include: { author: { select: { name: true } } },
