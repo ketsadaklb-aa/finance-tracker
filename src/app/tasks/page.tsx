@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Plus, LayoutGrid, CalendarDays, ListChecks, Trash2, MessageSquare, Loader2,
-  Bell, Search, Archive, Paperclip, FileText, X, Check, Upload, Columns3, ChevronUp, ChevronDown,
+  Bell, Search, Archive, Paperclip, FileText, X, Check, Upload, Columns3, ChevronUp, ChevronDown, Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +45,7 @@ export default function TasksPage() {
   const [search, setSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  const [tagFilter, setTagFilter] = useState<string>("all");
   const [remindersOn, setRemindersOn] = useState(false);
 
   // Editor
@@ -53,7 +54,9 @@ export default function TasksPage() {
   const [form, setForm] = useState(emptyForm());
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [newItem, setNewItem] = useState("");
+  const [newTag, setNewTag] = useState("");
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -113,7 +116,7 @@ export default function TasksPage() {
   function openNew(status?: TaskStatus) {
     const st = status ?? columns[0]?.id ?? "todo";
     setEditingId(null); setForm(emptyForm(st));
-    setChecklist([]); setAttachments([]); setNewItem(""); setComment(""); setOpen(true);
+    setChecklist([]); setAttachments([]); setTags([]); setNewItem(""); setNewTag(""); setComment(""); setOpen(true);
   }
   function openEdit(t: Task) {
     setEditingId(t.id);
@@ -121,9 +124,16 @@ export default function TasksPage() {
       title: t.title, description: t.description ?? "", priority: t.priority, status: t.status,
       dueDate: t.dueDate ? ymd(new Date(t.dueDate)) : "", dueTime: t.dueTime ?? "", assigneeId: t.assignee?.id ?? "",
     });
-    setChecklist(t.checklist ?? []); setAttachments(t.attachments ?? []);
-    setNewItem(""); setComment(""); setOpen(true);
+    setChecklist(t.checklist ?? []); setAttachments(t.attachments ?? []); setTags(t.tags ?? []);
+    setNewItem(""); setNewTag(""); setComment(""); setOpen(true);
   }
+
+  const addTag = (raw: string) => {
+    const tag = raw.trim();
+    if (tag && !tags.some(x => x.toLowerCase() === tag.toLowerCase())) setTags(ts => [...ts, tag]);
+    setNewTag("");
+  };
+  const removeTag = (tag: string) => setTags(ts => ts.filter(t => t !== tag));
 
   async function save() {
     if (!form.title.trim()) { toast("Title is required", "error"); return; }
@@ -132,7 +142,7 @@ export default function TasksPage() {
       title: form.title.trim(), description: form.description.trim() || null,
       priority: form.priority, status: form.status,
       dueDate: form.dueDate || null, dueTime: form.dueDate && form.dueTime ? form.dueTime : null,
-      assigneeId: form.assigneeId || null, checklist, attachments,
+      assigneeId: form.assigneeId || null, checklist, attachments, tags,
     };
     const r = editingId
       ? await fetch(`/api/tasks/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
@@ -225,11 +235,13 @@ export default function TasksPage() {
   const removeAttachment = (id: string) => setAttachments(a => a.filter(x => x.id !== id));
 
   // ── Derived ─────────────────────────────────────────────────────────────────
+  const allTags = [...new Set(tasks.flatMap(t => t.tags ?? []))].sort((a, b) => a.localeCompare(b));
   const filtered = tasks.filter(t => {
-    if (search && !`${t.title} ${t.description ?? ""}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${t.title} ${t.description ?? ""} ${(t.tags ?? []).join(" ")}`.toLowerCase().includes(search.toLowerCase())) return false;
     if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
     if (assigneeFilter === UNASSIGNED && t.assignee) return false;
     if (assigneeFilter !== "all" && assigneeFilter !== UNASSIGNED && t.assignee?.id !== assigneeFilter) return false;
+    if (tagFilter !== "all" && !(t.tags ?? []).includes(tagFilter)) return false;
     return true;
   });
   const doneChecklist = checklist.filter(i => i.done).length;
@@ -285,6 +297,15 @@ export default function TasksPage() {
             {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
           </SelectContent>
         </Select>
+        {allTags.length > 0 && (
+          <Select value={tagFilter} onValueChange={setTagFilter}>
+            <SelectTrigger className="w-auto"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tags</SelectItem>
+              {allTags.map(tag => <SelectItem key={tag} value={tag}>{tag}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
         <button onClick={openColumns} title="Manage board columns"
           className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 px-2 py-2 ml-auto">
           <Columns3 className="h-4 w-4" /> Columns
@@ -353,6 +374,28 @@ export default function TasksPage() {
             <div className="space-y-1.5">
               <Label>Due date</Label>
               <Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} />
+            </div>
+
+            {/* Tags */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5"><Tag className="h-3.5 w-3.5" /> Tags <span className="text-slate-400 font-normal">(company, project…)</span></Label>
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map(tag => (
+                    <span key={tag} className="inline-flex items-center gap-1 text-xs font-medium bg-blue-50 text-blue-600 rounded-md px-2 py-1">
+                      {tag}
+                      <button type="button" onClick={() => removeTag(tag)} className="hover:text-blue-800"><X className="h-3 w-3" /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <Input list="task-tag-suggestions" value={newTag}
+                onChange={e => setNewTag(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(newTag); } }}
+                placeholder="Type a company or project, press Enter…" />
+              <datalist id="task-tag-suggestions">
+                {allTags.filter(t => !tags.some(x => x.toLowerCase() === t.toLowerCase())).map(t => <option key={t} value={t} />)}
+              </datalist>
             </div>
 
             {/* Checklist */}

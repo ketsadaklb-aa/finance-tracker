@@ -1,5 +1,5 @@
 "use client";
-import { CalendarDays, MessageSquare, CheckSquare, Paperclip } from "lucide-react";
+import { CalendarDays, MessageSquare, CheckSquare, Paperclip, Tag } from "lucide-react";
 import { Task, PRIORITY, dueYmd, ymd, initials, checklistDone } from "./types";
 
 const fmtDay = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
@@ -31,6 +31,15 @@ export function TaskCard({ task, onClick, dragging }: { task: Task; onClick?: ()
       </div>
       {task.description && (
         <p className="mt-1.5 text-xs text-slate-500 line-clamp-2 pl-4">{task.description}</p>
+      )}
+      {task.tags && task.tags.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1 pl-4">
+          {task.tags.slice(0, 4).map(tag => (
+            <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] font-medium bg-blue-50 text-blue-600 rounded px-1.5 py-0.5">
+              <Tag className="h-2.5 w-2.5" />{tag}
+            </span>
+          ))}
+        </div>
       )}
       {hasMeta && (
         <div className="mt-2 flex items-center gap-2 flex-wrap pl-4">

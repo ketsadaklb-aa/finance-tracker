@@ -243,6 +243,7 @@ model Task {
   durationMin Int?                            // block length in minutes when timed (week/day grid)
   checklist   Json?                          // [{ id, text, done }]
   attachments Json?                          // [{ id, name, url (data URI), type }]
+  tags        Json?                          // ["Company A", "Project X", ...]
   order       Float     @default(0)          // manual sort within a column (fractional)
   archivedAt  DateTime?                       // set when cleared from the board
   ownerId     String

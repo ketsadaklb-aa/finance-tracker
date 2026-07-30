@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
       assigneeId: b.assigneeId || null,
       checklist: Array.isArray(b.checklist) ? b.checklist : undefined,
       attachments: Array.isArray(b.attachments) ? b.attachments : undefined,
+      tags: Array.isArray(b.tags) ? b.tags : undefined,
       order: (last?.order ?? 0) + 1,
       ownerId: session.user.id,
     },

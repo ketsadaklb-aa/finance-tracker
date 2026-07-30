@@ -32,6 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (b.assigneeId !== undefined) data.assigneeId = b.assigneeId || null;
   if (b.checklist !== undefined) data.checklist = Array.isArray(b.checklist) ? b.checklist : null;
   if (b.attachments !== undefined) data.attachments = Array.isArray(b.attachments) ? b.attachments : null;
+  if (b.tags !== undefined) data.tags = Array.isArray(b.tags) ? b.tags : null;
   if (b.archivedAt !== undefined) data.archivedAt = b.archivedAt ? new Date(b.archivedAt) : null;
   if (typeof b.order === "number") data.order = b.order;
 

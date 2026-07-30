@@ -25,6 +25,7 @@ export interface Task {
   durationMin: number | null;
   checklist: ChecklistItem[] | null;
   attachments: Attachment[] | null;
+  tags: string[] | null;
   archivedAt: string | null;
   assignee: UserLite | null;
   owner: UserLite;
