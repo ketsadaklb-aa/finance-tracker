@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, Check, Loader2, Share2, Download, Copy, X, ShieldOff, Link2 } from "lucide-react";
 import { notoLao } from "./lao-font";
+import { injectLaoCanvasFont } from "./inject-lao-canvas-font";
 
 type Scene = { elements?: unknown[]; appState?: { viewBackgroundColor?: string }; files?: unknown };
 type ExApi = { getSceneElements: () => readonly unknown[]; getAppState: () => Record<string, unknown>; getFiles: () => unknown };
@@ -26,6 +27,7 @@ export default function NoteCanvas({ noteId }: { noteId: string }) {
   const [copied, setCopied] = useState(false);
   const shareUrl = shareStatus?.token ? `${typeof window !== "undefined" ? window.location.origin : ""}/share/note/${shareStatus.token}` : "";
 
+  useEffect(() => { injectLaoCanvasFont(); }, []);
   useEffect(() => {
     fetch(`/api/notes/${noteId}`)
       .then(r => (r.ok ? r.json() : null))

@@ -4,6 +4,7 @@ import "@excalidraw/excalidraw/index.css";
 import { useEffect, useState } from "react";
 import { Loader2, Lock, ShieldCheck } from "lucide-react";
 import { notoLao } from "../../../notes/lao-font";
+import { injectLaoCanvasFont } from "../../../notes/inject-lao-canvas-font";
 
 type Scene = { elements?: unknown[]; appState?: { viewBackgroundColor?: string }; files?: unknown };
 
@@ -12,6 +13,7 @@ export default function NoteShareView({ token }: { token: string }) {
   const [initial, setInitial] = useState<Record<string, unknown> | null>(null);
   const [dead, setDead] = useState(false);
 
+  useEffect(() => { injectLaoCanvasFont(); }, []);
   useEffect(() => {
     fetch(`/api/share/note/${token}`)
       .then(r => (r.ok ? r.json() : null))
