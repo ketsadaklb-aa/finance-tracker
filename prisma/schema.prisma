@@ -271,10 +271,11 @@ model TaskAssignee {
 
 // ─── Notes canvas (Excalidraw) ───────────────────────────────────────────────
 model Note {
-  id        String   @id @default(cuid())
-  title     String   @default("Untitled")
-  data      Json?    // Excalidraw scene: { elements, appState, files }
-  ownerId   String
+  id         String   @id @default(cuid())
+  title      String   @default("Untitled")
+  data       Json?    // Excalidraw scene: { elements, appState, files }
+  shareToken String?  @unique // public read-only link when set
+  ownerId    String
   owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())

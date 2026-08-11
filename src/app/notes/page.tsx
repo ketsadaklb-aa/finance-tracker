@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Plus, Trash2, Loader2, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { notoLao } from "./lao-font";
 
 interface NoteMeta { id: string; title: string; updatedAt: string }
 
@@ -44,7 +45,7 @@ export default function NotesPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className={`${notoLao.className} max-w-5xl mx-auto`}>
       <div className="flex items-center justify-between mb-6 gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Notes</h1>
