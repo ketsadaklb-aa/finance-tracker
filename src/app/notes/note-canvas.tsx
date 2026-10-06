@@ -8,6 +8,10 @@ import { notoLao } from "./lao-font";
 import { injectLaoCanvasFont } from "./inject-lao-canvas-font";
 
 type Scene = { elements?: unknown[]; appState?: { viewBackgroundColor?: string }; files?: unknown };
+// New text defaults to Nunito ("Normal" in Excalidraw's font picker) — a clean sans
+// that pairs with Noto Sans Lao, instead of the hand-drawn Excalifont. Still switchable.
+const DEFAULT_FONT_FAMILY = 6;
+
 type ExApi = { getSceneElements: () => readonly unknown[]; getAppState: () => Record<string, unknown>; getFiles: () => unknown };
 
 export default function NoteCanvas({ noteId }: { noteId: string }) {
@@ -32,14 +36,14 @@ export default function NoteCanvas({ noteId }: { noteId: string }) {
     fetch(`/api/notes/${noteId}`)
       .then(r => (r.ok ? r.json() : null))
       .then((n: { title: string; data: Scene | null } | null) => {
-        if (!n) { setInitial({}); return; }
+        if (!n) { setInitial({ appState: { currentItemFontFamily: DEFAULT_FONT_FAMILY } }); return; }
         setTitle(n.title);
         const d = n.data;
         setInitial(d
-          ? { elements: d.elements ?? [], appState: { viewBackgroundColor: d.appState?.viewBackgroundColor ?? "#ffffff" }, files: d.files ?? undefined, scrollToContent: true }
-          : {});
+          ? { elements: d.elements ?? [], appState: { viewBackgroundColor: d.appState?.viewBackgroundColor ?? "#ffffff", currentItemFontFamily: DEFAULT_FONT_FAMILY }, files: d.files ?? undefined, scrollToContent: true }
+          : { appState: { currentItemFontFamily: DEFAULT_FONT_FAMILY } });
       })
-      .catch(() => setInitial({}));
+      .catch(() => setInitial({ appState: { currentItemFontFamily: DEFAULT_FONT_FAMILY } }));
     const t = setTimeout(() => { skipEarly.current = false; }, 800);
     return () => clearTimeout(t);
   }, [noteId]);
