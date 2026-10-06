@@ -40,7 +40,7 @@ export default async function RootLayout({
   await init();
   return (
     <html lang="en">
-      <body className={`${geist.className} bg-slate-50 antialiased`}>
+      <body className={`${geist.className} antialiased`}>
         <ToastProvider>
           <Shell>{children}</Shell>
         </ToastProvider>

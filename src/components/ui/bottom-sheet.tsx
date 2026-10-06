@@ -14,7 +14,7 @@ const BottomSheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn("sheet-overlay fixed inset-0 z-50 bg-black/50", className)}
+    className={cn("sheet-overlay fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-[3px]", className)}
     {...props}
   />
 ));
@@ -39,16 +39,16 @@ const BottomSheetContent = React.forwardRef<
       className={cn(
         "sheet-mobile",
         // Mobile: full-width sheet anchored bottom, rounded-top corners
-        "fixed left-0 right-0 bottom-0 z-50 bg-white border-t border-slate-200 rounded-t-2xl shadow-2xl max-h-[92dvh] overflow-y-auto pb-[env(safe-area-inset-bottom)]",
+        "fixed left-0 right-0 bottom-0 z-50 bg-white/95 backdrop-blur-2xl border-t border-white ring-1 ring-slate-200/70 rounded-t-[1.75rem] shadow-2xl shadow-slate-900/20 max-h-[92dvh] overflow-y-auto pb-[env(safe-area-inset-bottom)]",
         // Tablet+: centered modal with original transform
-        "sm:left-[50%] sm:right-auto sm:bottom-auto sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:w-full sm:max-w-lg sm:rounded-2xl sm:border sm:border-slate-200 sm:max-h-[88dvh]",
+        "sm:left-[50%] sm:right-auto sm:bottom-auto sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:w-full sm:max-w-lg sm:rounded-3xl sm:border sm:border-white sm:max-h-[88dvh]",
         className
       )}
       {...props}
     >
       {!hideHandle && (
         <div className="sm:hidden flex justify-center pt-3 pb-1">
-          <div className="h-1.5 w-10 rounded-full bg-slate-200" aria-hidden="true" />
+          <div className="h-1.5 w-10 rounded-full bg-slate-300/70" aria-hidden="true" />
         </div>
       )}
       <div className="px-5 pt-3 pb-5 sm:p-6">{children}</div>

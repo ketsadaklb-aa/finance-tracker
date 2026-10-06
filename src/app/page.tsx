@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,11 @@ import { TxTypeIcon, txTypeBubbleClass } from "@/components/ui/tx-type-icon";
 import {
   TrendingUp, TrendingDown, Wallet, ChevronLeft, ChevronRight,
   AlertTriangle, RefreshCw, ArrowUp, ArrowDown, Minus, Plus, Paperclip, Flame, Calendar,
+  BookOpen, Search, ArrowUpRight,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useUser } from "@/components/layout/user-context";
+import { openAddTransaction, openCommandPalette } from "@/components/layout/nav-config";
 import Link from "next/link";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
@@ -59,6 +63,46 @@ interface DashboardData {
 const MONTH_NAMES_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const MONTH_NAMES_LONG  = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
+// Shared chart styling — recessive axes/grid, one tooltip look everywhere
+const AXIS_TICK = { fontSize: 11, fill: "#94A3B8" };
+const GRID_STROKE = "#E2E8F0";
+const TOOLTIP_STYLE = {
+  fontSize: 12, borderRadius: 14, border: "1px solid rgba(226,232,240,0.9)",
+  background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)",
+  boxShadow: "0 12px 32px -8px rgba(15,23,42,0.18)", padding: "8px 12px",
+};
+const CURSOR_FILL = { fill: "rgba(99,102,241,0.06)" };
+const INCOME_COLOR = "#10B981";
+const EXPENSE_COLOR = "#F43F5E";
+const compact = (v: number) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}K` : String(v);
+
+/** Animate a number from 0 → value with an ease-out curve (respects reduced motion). */
+function useCountUp(value: number, duration = 900) {
+  const [display, setDisplay] = useState(value);
+  const fromRef = useRef(0);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setDisplay(value); return; }
+    const from = fromRef.current;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min((t - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 4);
+      setDisplay(from + (value - from) * eased);
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = value;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+  return display;
+}
+
+function CountUp({ value, symbol }: { value: number; symbol: string }) {
+  const v = useCountUp(value);
+  return <>{formatAmount(Math.round(v * 100) / 100, symbol)}</>;
+}
+
 function greeting() {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
@@ -74,6 +118,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [activeCurrency, setActiveCurrency] = useState<string>("LAK");
+  const router = useRouter();
+  const user = useUser();
 
   function fetchData(m: number, y: number) {
     setLoading(true);
@@ -128,27 +174,36 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 md:space-y-8 animate-fade-in pb-2">
       {/* ─── Greeting header ──────────────────────────────────────────── */}
-      <header className="flex items-start justify-between gap-3">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{greeting()}</p>
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mt-0.5">Dashboard</h1>
-          <p className="text-slate-500 text-sm mt-1">
-            {now.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+          <p className="text-sm text-slate-500">
+            {now.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })}
           </p>
+          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-slate-900 mt-1">
+            {greeting()}{user ? <>, <span className="text-brand">{user.name.split(" ")[0]}</span></> : ""}
+          </h1>
         </div>
-        <button
-          onClick={() => fetchData(month, year)}
-          className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors tap-feedback"
-          aria-label="Refresh"
-        >
-          <RefreshCw className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2 overflow-x-auto -mx-1 px-1 pb-1 md:pb-0">
+          <QuickAction icon={<Plus className="h-4 w-4" />} label="Add transaction" primary
+            onClick={() => openAddTransaction("/", router.push)} />
+          <QuickAction icon={<BookOpen className="h-4 w-4" />} label="Ledger" onClick={() => router.push("/ledger")} />
+          <QuickAction icon={<Search className="h-4 w-4" />} label="Search" onClick={openCommandPalette} className="hidden sm:inline-flex" />
+          <button
+            onClick={() => fetchData(month, year)}
+            className="h-10 w-10 shrink-0 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 bg-white/70 ring-1 ring-slate-200/70 hover:bg-white transition-all tap-feedback group"
+            aria-label="Refresh"
+          >
+            <RefreshCw className="h-4 w-4 transition-transform duration-500 group-hover:rotate-180" />
+          </button>
+        </div>
       </header>
 
       {/* ─── Overdue alert ───────────────────────────────────────────── */}
       {totalOverdue > 0 && (
-        <div className="flex flex-wrap items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 animate-scale-in">
-          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+        <div className="flex flex-wrap items-center gap-3 bg-gradient-to-r from-amber-50 to-orange-50/60 ring-1 ring-amber-200/80 rounded-2xl px-4 py-3 animate-scale-in">
+          <span className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center shrink-0">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+          </span>
           <p className="text-sm text-amber-800 font-medium flex-1">
             {data.arSummary.overdue > 0 && `${data.arSummary.overdue} overdue receivable${data.arSummary.overdue > 1 ? "s" : ""}`}
             {data.arSummary.overdue > 0 && data.apSummary.overdue > 0 && " · "}
@@ -191,24 +246,23 @@ export default function DashboardPage() {
           data={data}
           activeCurrency={activeCurrency}
           available={currencyCodes}
+          dailyTrend={data.dailyTrend?.[activeCurrency]}
         />
 
         {/* Chart */}
         {chartData.length > 0 ? (
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Income vs Expenses</p>
+          <Card className="p-5">
+            <p className="text-sm font-semibold text-slate-800 mb-3">Income vs expenses by currency</p>
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData} barCategoryGap="35%">
-                <XAxis dataKey="currency" tick={{ fontSize: 12, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={50}
-                  tickFormatter={v => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}K` : String(v)} />
-                <Tooltip
-                  contentStyle={{ fontSize: 12, borderRadius: 12, border: "1px solid #E2E8F0", boxShadow: "0 8px 24px rgba(15,23,42,0.08)" }}
-                  formatter={(value) => (value as number).toLocaleString()}
-                />
+              <BarChart data={chartData} barCategoryGap="35%" barGap={2}>
+                <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="currency" tick={AXIS_TICK} axisLine={false} tickLine={false} />
+                <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={50} tickFormatter={compact} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={CURSOR_FILL}
+                  formatter={(value) => (value as number).toLocaleString()} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                <Bar dataKey="Income" fill="#10B981" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="Expenses" fill="#F43F5E" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="Income" fill={INCOME_COLOR} radius={[4, 4, 0, 0]} maxBarSize={48} />
+                <Bar dataKey="Expenses" fill={EXPENSE_COLOR} radius={[4, 4, 0, 0]} maxBarSize={48} />
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -268,7 +322,7 @@ export default function DashboardPage() {
       {/* ─── Recent Transactions ─────────────────────────────────────── */}
       <section>
         <SectionTitle
-          right={<Link href="/transactions" className="text-xs text-blue-600 hover:text-blue-700 font-medium hover:underline">View all →</Link>}
+          right={<Link href="/transactions" className="text-sm text-indigo-600 hover:text-indigo-700 font-medium inline-flex items-center gap-1 group">View all <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" /></Link>}
         >
           Recent Activity
         </SectionTitle>
@@ -291,7 +345,7 @@ export default function DashboardPage() {
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="border-b border-slate-100">
+                    <thead><tr className="border-b border-slate-100 text-xs uppercase tracking-wider">
                       <th className="p-4 w-10"></th>
                       <th className="text-left p-4 font-medium text-slate-500">Date</th>
                       <th className="text-left p-4 font-medium text-slate-500">Description</th>
@@ -301,9 +355,9 @@ export default function DashboardPage() {
                     </tr></thead>
                     <tbody>
                       {data.recentTransactions.map(tx => (
-                        <tr key={tx.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                        <tr key={tx.id} onClick={() => router.push("/transactions")} className="border-b border-slate-100/70 last:border-0 hover:bg-indigo-50/40 transition-colors cursor-pointer">
                           <td className="pl-4 py-3">
-                            <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${txTypeBubbleClass(tx.type)}`}>
+                            <span className={`w-8 h-8 rounded-xl flex items-center justify-center ${txTypeBubbleClass(tx.type)}`}>
                               <TxTypeIcon type={tx.type} className="h-4 w-4" />
                             </span>
                           </td>
@@ -311,7 +365,7 @@ export default function DashboardPage() {
                           <td className="p-4 text-slate-700">{tx.description || "—"}</td>
                           <td className="p-4 text-slate-500">{tx.account.name}</td>
                           <td className="p-4">{tx.category && <Badge variant="secondary">{tx.category.name}</Badge>}</td>
-                          <td className={`p-4 text-right font-semibold whitespace-nowrap ${txAmountClass(tx.type)}`}>
+                          <td className={`p-4 text-right font-semibold whitespace-nowrap tabular ${txAmountClass(tx.type)}`}>
                             {txAmountPrefix(tx.type)}{formatAmount(tx.amount, tx.currency.symbol)}
                           </td>
                         </tr>
@@ -338,75 +392,100 @@ function NetWorthHero({
   onSwitch: (c: string) => void;
   netWorth: CurrencyData;
 }) {
-  const total = Math.max(netWorth.balance + netWorth.ar, netWorth.ap, 1);
-  const assetsPct = (netWorth.balance / total) * 100;
+  const total = Math.max(netWorth.balance + netWorth.ar + netWorth.ap, 1);
+  const assetsPct = (Math.max(netWorth.balance, 0) / total) * 100;
   const arPct = (netWorth.ar / total) * 100;
   const apPct = (netWorth.ap / total) * 100;
   return (
-    <Card className="overflow-hidden relative">
-      <div className="h-1.5 bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-500" />
-      <div className="p-5 md:p-6">
-        {/* Currency tabs */}
-        {codes.length > 1 && (
-          <div className="flex gap-1.5 mb-4 -mx-1 overflow-x-auto pb-0.5">
-            {codes.map(c => {
-              const isActive = c === active;
-              return (
-                <button
-                  key={c}
-                  onClick={() => onSwitch(c)}
-                  className={`text-xs font-semibold px-3 py-1 rounded-full whitespace-nowrap transition-all tap-feedback
-                    ${isActive ? "bg-blue-600 text-white shadow-sm shadow-blue-500/30" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
-                  aria-pressed={isActive}
-                >
-                  {c} {data.netWorth[c].symbol}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Net worth · {active}</p>
-        <p className={`text-3xl md:text-5xl font-extrabold tracking-tight mt-1 ${netWorth.net >= 0 ? "text-slate-900" : "text-rose-600"}`}>
-          {formatAmount(netWorth.net, netWorth.symbol)}
+    <div className="spotlight relative overflow-hidden rounded-[1.75rem] p-6 md:p-8 text-white shadow-2xl shadow-indigo-900/20 bg-[#0B1430]">
+      {/* Gradient mesh */}
+      <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-24 -left-16 w-80 h-80 rounded-full bg-blue-500/40 blur-3xl" />
+        <div className="absolute -bottom-32 right-0 w-96 h-96 rounded-full bg-violet-500/35 blur-3xl" />
+        <div className="absolute top-10 right-1/3 w-56 h-56 rounded-full bg-sky-400/20 blur-3xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:18px_18px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
+      </div>
+
+      <div className="relative">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-medium text-white/60">Net worth</p>
+          {codes.length > 1 && (
+            <div className="flex p-1 rounded-full bg-white/10 ring-1 ring-white/10 backdrop-blur" role="tablist" aria-label="Currency">
+              {codes.map(c => {
+                const isActive = c === active;
+                return (
+                  <button
+                    key={c}
+                    onClick={() => onSwitch(c)}
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap transition-all duration-300 tap-feedback
+                      ${isActive ? "bg-white text-slate-900 shadow-md" : "text-white/70 hover:text-white"}`}
+                  >
+                    {data.netWorth[c].symbol} {c}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <p className={`text-4xl md:text-6xl font-semibold tracking-tight mt-3 tabular ${netWorth.net >= 0 ? "text-white" : "text-rose-300"}`}>
+          <CountUp value={netWorth.net} symbol={netWorth.symbol} />
         </p>
 
         {/* Horizontal breakdown bar */}
-        <div className="mt-5">
-          <div className="flex h-2 w-full rounded-full overflow-hidden bg-slate-100">
-            {assetsPct > 0 && <div className="h-full bg-slate-700" style={{ width: `${assetsPct}%` }} title={`Assets ${formatAmount(netWorth.balance, netWorth.symbol)}`} />}
-            {arPct > 0     && <div className="h-full bg-emerald-500" style={{ width: `${arPct}%` }} title={`AR ${formatAmount(netWorth.ar, netWorth.symbol)}`} />}
-            {apPct > 0     && <div className="h-full bg-rose-400" style={{ width: `${apPct}%` }} title={`AP ${formatAmount(netWorth.ap, netWorth.symbol)}`} />}
+        <div className="mt-6 md:mt-8">
+          <div className="flex gap-0.5 h-2 w-full rounded-full overflow-hidden bg-white/10">
+            {assetsPct > 0 && <div className="progress-bar h-full rounded-full bg-white/90" style={{ ["--progress-width" as string]: `${assetsPct}%` }} title={`Assets ${formatAmount(netWorth.balance, netWorth.symbol)}`} />}
+            {arPct > 0     && <div className="progress-bar h-full rounded-full bg-emerald-400" style={{ ["--progress-width" as string]: `${arPct}%` }} title={`AR ${formatAmount(netWorth.ar, netWorth.symbol)}`} />}
+            {apPct > 0     && <div className="progress-bar h-full rounded-full bg-rose-400" style={{ ["--progress-width" as string]: `${apPct}%` }} title={`AP ${formatAmount(netWorth.ap, netWorth.symbol)}`} />}
           </div>
-          <div className="grid grid-cols-3 gap-3 mt-3 text-xs">
-            <BreakdownItem color="bg-slate-700"    label="Assets" value={formatAmount(netWorth.balance, netWorth.symbol)} />
-            <BreakdownItem color="bg-emerald-500"  label="AR"     value={`+${formatAmount(netWorth.ar, netWorth.symbol)}`} />
-            <BreakdownItem color="bg-rose-400"     label="AP"     value={`-${formatAmount(netWorth.ap, netWorth.symbol)}`} />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mt-4">
+            <BreakdownItem color="bg-white/90"    label="Assets"      value={formatAmount(netWorth.balance, netWorth.symbol)} />
+            <BreakdownItem color="bg-emerald-400" label="Owed to you" value={`+${formatAmount(netWorth.ar, netWorth.symbol)}`} />
+            <BreakdownItem color="bg-rose-400"    label="You owe"     value={`−${formatAmount(netWorth.ap, netWorth.symbol)}`} />
           </div>
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
 
 function BreakdownItem({ color, label, value }: { color: string; label: string; value: string }) {
   return (
-    <div className="space-y-0.5">
+    <div className="rounded-2xl bg-white/[0.06] ring-1 ring-white/10 px-3 py-2.5 min-w-0 flex sm:block items-center justify-between gap-3">
       <div className="flex items-center gap-1.5">
         <span className={`block w-1.5 h-1.5 rounded-full ${color}`} />
-        <span className="text-slate-500 font-medium">{label}</span>
+        <span className="text-xs sm:text-[11px] text-white/60 font-medium truncate">{label}</span>
       </div>
-      <p className="font-semibold text-slate-800">{value}</p>
+      <p className="font-semibold text-sm md:text-base text-white sm:mt-0.5 truncate tabular">{value}</p>
     </div>
+  );
+}
+
+function QuickAction({ icon, label, onClick, primary, className }: { icon: React.ReactNode; label: string; onClick: () => void; primary?: boolean; className?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`${className ?? "inline-flex"} h-10 shrink-0 items-center gap-2 px-4 rounded-xl text-sm font-semibold transition-all duration-200 tap-feedback
+        ${primary
+          ? "bg-brand text-white shadow-lg shadow-indigo-500/30 ring-1 ring-inset ring-white/20 hover:shadow-indigo-500/45 hover:-translate-y-px"
+          : "bg-white/70 text-slate-700 ring-1 ring-slate-200/70 hover:bg-white hover:text-slate-900"}`}
+    >
+      {icon}{label}
+    </button>
   );
 }
 
 // ─── Monthly KPI Tiles ─────────────────────────────────────────────────────
 function MonthlyKpis({
-  data, activeCurrency, available,
+  data, activeCurrency, available, dailyTrend,
 }: {
   data: DashboardData;
   activeCurrency: string;
   available: string[];
+  dailyTrend?: { day: number; income: number; expense: number }[];
 }) {
   // Use the active currency if it has data; fall back to any with data
   const codes = available.filter(c => data.monthlyTotals.income[c] || data.monthlyTotals.expense[c]);
@@ -432,22 +511,28 @@ function MonthlyKpis({
   const savingsRate  = income > 0 ? (savings / income) * 100 : null;
 
   return (
-    <div className="grid grid-cols-3 gap-2 md:gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
       <KpiTile
         label="Income"
         value={formatAmount(income, symbol)}
-        valueClass="text-emerald-600"
+        valueClass="text-slate-900"
         delta={incomeDelta}
         deltaGoodDirection="up"
         icon={<TrendingUp className="h-4 w-4" />}
+        iconClass="bg-emerald-500/10 text-emerald-600"
+        spark={code === activeCurrency ? dailyTrend?.map(d => d.income) : undefined}
+        sparkColor={INCOME_COLOR}
       />
       <KpiTile
         label="Expense"
         value={formatAmount(expense, symbol)}
-        valueClass="text-rose-500"
+        valueClass="text-slate-900"
         delta={expenseDelta}
         deltaGoodDirection="down"
         icon={<TrendingDown className="h-4 w-4" />}
+        iconClass="bg-rose-500/10 text-rose-500"
+        spark={code === activeCurrency ? dailyTrend?.map(d => d.expense) : undefined}
+        sparkColor={EXPENSE_COLOR}
       />
       <KpiTile
         label="Savings"
@@ -457,13 +542,15 @@ function MonthlyKpis({
         deltaSuffix="%"
         deltaIsRate
         icon={<Wallet className="h-4 w-4" />}
+        iconClass="bg-indigo-500/10 text-indigo-600"
+        className="col-span-2 md:col-span-1"
       />
     </div>
   );
 }
 
 function KpiTile({
-  label, value, valueClass, delta, deltaGoodDirection, deltaSuffix, deltaIsRate, icon,
+  label, value, valueClass, delta, deltaGoodDirection, deltaSuffix, deltaIsRate, icon, iconClass, spark, sparkColor, className,
 }: {
   label: string;
   value: string;
@@ -474,6 +561,11 @@ function KpiTile({
   deltaSuffix?: string;
   deltaIsRate?: boolean; // for "savings rate" — display value rather than vs-last comparison
   icon?: React.ReactNode;
+  iconClass?: string;
+  /** Daily values for a background sparkline */
+  spark?: number[];
+  sparkColor?: string;
+  className?: string;
 }) {
   let deltaText: string | null = null;
   let deltaColor = "text-slate-400";
@@ -496,21 +588,38 @@ function KpiTile({
       deltaIcon  = goingUp ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
     }
   }
+  const hasSpark = spark && spark.some(v => v > 0);
+  const sparkId = `spark-${label}`;
   return (
-    <Card className="p-3 md:p-4 card-glow">
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</span>
-        <span className="text-slate-300">{icon}</span>
+    <Card className={`p-3 md:p-5 card-glow overflow-hidden ${className ?? ""}`}>
+      <div className="flex items-center justify-between mb-2 md:mb-3">
+        <span className="text-[11px] md:text-sm font-medium text-slate-500">{label}</span>
+        <span className={`hidden sm:flex w-8 h-8 rounded-xl items-center justify-center ${iconClass ?? "bg-slate-100 text-slate-500"}`}>{icon}</span>
       </div>
-      <p className={`font-bold text-base md:text-xl tracking-tight ${valueClass ?? "text-slate-900"} truncate`}>
+      <p className={`font-semibold text-base md:text-2xl tracking-tight tabular ${valueClass ?? "text-slate-900"} truncate`}>
         {value}
       </p>
       {deltaText && (
-        <p className={`text-[11px] mt-0.5 flex items-center gap-0.5 ${deltaColor}`}>
+        <p className={`text-[11px] mt-1 flex items-center gap-0.5 ${deltaColor}`}>
           {deltaIcon}
-          <span className="font-medium">{deltaText}</span>
+          <span className="font-semibold">{deltaText}</span>
           {!deltaIsRate && <span className="text-slate-400 ml-0.5 hidden sm:inline">vs last month</span>}
         </p>
+      )}
+      {hasSpark && (
+        <div className="h-10 -mx-3 md:-mx-5 -mb-3 md:-mb-5 mt-2" aria-hidden="true">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={spark!.map((v, i) => ({ i, v }))} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id={sparkId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={sparkColor} stopOpacity={0.25} />
+                  <stop offset="100%" stopColor={sparkColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <Area type="monotone" dataKey="v" stroke={sparkColor} strokeWidth={2} fill={`url(#${sparkId})`} isAnimationActive={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       )}
     </Card>
   );
@@ -528,7 +637,7 @@ function MonthPicker({
   onToday: () => void;
 }) {
   return (
-    <div className="flex items-center gap-1 bg-white rounded-xl border border-slate-200 px-1 py-0.5 shadow-sm">
+    <div className="flex items-center gap-1 bg-white/80 backdrop-blur rounded-xl ring-1 ring-slate-200/70 px-1 py-1 shadow-sm shadow-slate-900/[0.03]">
       <button onClick={onPrev} className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors" aria-label="Previous month">
         <ChevronLeft className="h-4 w-4" />
       </button>
@@ -543,7 +652,7 @@ function MonthPicker({
       </button>
       {canGoForward && (
         <button onClick={onToday}
-          className="text-[11px] text-blue-600 hover:text-blue-700 px-1.5 py-0.5 rounded-md hover:bg-blue-50 font-semibold ml-0.5">
+          className="text-[11px] text-indigo-600 hover:text-indigo-700 px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 font-semibold ml-0.5">
           Today
         </button>
       )}
@@ -570,13 +679,21 @@ function ArApCard({
   }[accent];
   const totals = Object.entries(summary.totalByCurrency);
   return (
-    <Card className="p-5 card-glow">
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">{sublabel}</p>
+    <Link href={href} className="block group">
+    <Card className="p-5 card-glow h-full">
+      <div className="flex items-start justify-between gap-2 mb-4">
+        <div className="flex items-center gap-3">
+          <span className={`w-10 h-10 rounded-2xl flex items-center justify-center ${accentClasses.bg} ${accentClasses.text}`}>
+            {accent === "emerald" ? <ArrowDown className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-slate-800">{label}</p>
+            <p className="text-xs text-slate-400">{sublabel}</p>
+          </div>
         </div>
-        <Link href={href} className="text-xs text-blue-600 hover:text-blue-700 font-medium hover:underline shrink-0">View all →</Link>
+        <span className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 bg-slate-900/[0.04] group-hover:bg-brand group-hover:text-white transition-all duration-300 group-hover:rotate-45">
+          <ArrowUpRight className="h-4 w-4" />
+        </span>
       </div>
       {totals.length === 0 ? (
         <p className="text-sm text-slate-400">All settled ✓</p>
@@ -585,7 +702,7 @@ function ArApCard({
           {totals.map(([code, t]) => (
             <div key={code} className="flex items-center justify-between">
               <span className="text-xs text-slate-500 font-medium">{code}</span>
-              <span className={`text-xl md:text-2xl font-bold tracking-tight ${accentClasses.text}`}>
+              <span className={`text-xl md:text-2xl font-semibold tracking-tight tabular ${accentClasses.text}`}>
                 {formatAmount(t.remaining, t.symbol)}
               </span>
             </div>
@@ -596,9 +713,10 @@ function ArApCard({
         {summary.open > 0     && <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">{summary.open} open</span>}
         {summary.partial > 0  && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">{summary.partial} partial</span>}
         {summary.settled > 0  && <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium">{summary.settled} settled</span>}
-        {summary.overdue > 0  && <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-medium animate-pulse">{summary.overdue} overdue!</span>}
+        {summary.overdue > 0  && <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-medium inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-500 pulse-dot" />{summary.overdue} overdue</span>}
       </div>
     </Card>
+    </Link>
   );
 }
 
@@ -607,7 +725,7 @@ function ActivityCard({ tx }: { tx: DashboardData["recentTransactions"][number] 
   return (
     <Link
       href="/transactions"
-      className="block bg-white rounded-2xl border border-slate-100 shadow-sm p-3.5 flex items-center gap-3 card-hover tap-feedback"
+      className="bg-white/85 backdrop-blur rounded-2xl ring-1 ring-slate-200/60 shadow-sm shadow-slate-900/[0.03] p-3.5 flex items-center gap-3 card-hover tap-feedback"
     >
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${txTypeBubbleClass(tx.type)}`}>
         <TxTypeIcon type={tx.type} className="h-5 w-5" />
@@ -621,7 +739,7 @@ function ActivityCard({ tx }: { tx: DashboardData["recentTransactions"][number] 
           {relativeDayLabel(tx.date)} · {tx.account.name}{tx.category && ` · ${tx.category.name}`}
         </p>
       </div>
-      <p className={`font-bold text-sm whitespace-nowrap shrink-0 ${txAmountClass(tx.type)}`}>
+      <p className={`font-semibold text-sm whitespace-nowrap shrink-0 tabular ${txAmountClass(tx.type)}`}>
         {txAmountPrefix(tx.type)}{formatAmount(tx.amount, tx.currency.symbol)}
       </p>
     </Link>
@@ -632,8 +750,7 @@ function ActivityCard({ tx }: { tx: DashboardData["recentTransactions"][number] 
 function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between mb-3">
-      <h2 className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-        <span className="block w-1 h-3 rounded-full bg-blue-500" aria-hidden="true" />
+      <h2 className="text-lg font-semibold tracking-tight text-slate-900">
         {children}
       </h2>
       {right}
@@ -645,8 +762,8 @@ function SectionTitle({ children, right }: { children: React.ReactNode; right?: 
 function DashboardSkeleton() {
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="shimmer w-40 h-7 rounded" />
-      <div className="shimmer h-44 rounded-2xl" />
+      <div className="shimmer w-64 h-10 rounded-xl" />
+      <div className="shimmer h-56 rounded-[1.75rem]" />
       <div className="grid grid-cols-3 gap-3">
         {[1,2,3].map(i => <div key={i} className="shimmer h-24 rounded-2xl" />)}
       </div>
@@ -661,10 +778,21 @@ function DashboardSkeleton() {
 }
 
 // ─── Spending Insights ────────────────────────────────────────────────────
-const CATEGORY_COLORS = [
-  "#3B82F6", "#8B5CF6", "#EC4899", "#F59E0B", "#10B981",
-  "#06B6D4", "#F97316", "#EF4444", "#6366F1", "#14B8A6",
-];
+// Validated categorical palette (CVD-safe in fixed order). More than 8 categories fold into "Other".
+const CATEGORY_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
+const OTHER_COLOR = "#94A3B8";
+
+function foldCategories(list: { category: string; amount: number; percentage: number }[]) {
+  if (list.length <= CATEGORY_COLORS.length) return list.map((c, i) => ({ ...c, color: CATEGORY_COLORS[i] }));
+  const head = list.slice(0, CATEGORY_COLORS.length - 1).map((c, i) => ({ ...c, color: CATEGORY_COLORS[i] }));
+  const rest = list.slice(CATEGORY_COLORS.length - 1);
+  return [...head, {
+    category: `Other (${rest.length})`,
+    amount: rest.reduce((a, c) => a + c.amount, 0),
+    percentage: rest.reduce((a, c) => a + c.percentage, 0),
+    color: OTHER_COLOR,
+  }];
+}
 
 function SpendingInsights({
   spendingByCategory, incomeByCategory, dailyTrend, avgDailySpend, topExpenses,
@@ -679,12 +807,16 @@ function SpendingInsights({
   monthName: string;
   year: number;
 }) {
+  const [hovered, setHovered] = useState<number | null>(null);
   const hasSpending = (spendingByCategory?.length ?? 0) > 0;
   const hasIncome   = (incomeByCategory?.length ?? 0) > 0;
   const hasDailyTrend = (dailyTrend?.length ?? 0) > 0 && (dailyTrend ?? []).some(d => d.income > 0 || d.expense > 0);
   if (!hasSpending && !hasIncome && !hasDailyTrend) return null;
 
   const symbol = avgDailySpend?.symbol ?? "";
+  const slices = foldCategories(spendingByCategory ?? []);
+  const totalSpend = slices.reduce((a, c) => a + c.amount, 0);
+  const focus = hovered !== null ? slices[hovered] : null;
   const filteredTopExpenses = topExpenses.filter(t => t.currency.code === activeCurrency);
 
   return (
@@ -697,47 +829,58 @@ function SpendingInsights({
         {/* Category donut + ranked list */}
         {hasSpending && (
           <Card className="p-5 lg:col-span-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Where your money went</p>
+            <p className="text-sm font-semibold text-slate-800">Where your money went</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 items-center">
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={spendingByCategory}
-                    cx="50%" cy="50%"
-                    innerRadius={50} outerRadius={80}
-                    paddingAngle={2}
-                    dataKey="amount"
-                    stroke="none"
-                  >
-                    {spendingByCategory!.map((_, i) => (
-                      <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ fontSize: 12, borderRadius: 12, border: "1px solid #E2E8F0", boxShadow: "0 8px 24px rgba(15,23,42,0.08)" }}
-                    formatter={((value: unknown, _name: unknown, entry: unknown) => {
-                      const v = Number(value ?? 0);
-                      const e = entry as { payload?: { category?: string; percentage?: number } } | undefined;
-                      const pct = e?.payload?.percentage ?? 0;
-                      return [`${symbol}${v.toLocaleString()} (${pct.toFixed(1)}%)`, e?.payload?.category ?? ""];
-                    }) as never}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              <div className="relative h-[220px]" onMouseLeave={() => setHovered(null)}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={slices}
+                      cx="50%" cy="50%"
+                      innerRadius={66} outerRadius={92}
+                      paddingAngle={1}
+                      cornerRadius={4}
+                      dataKey="amount"
+                      stroke="#fff"
+                      strokeWidth={2}
+                      onMouseEnter={(_, i) => setHovered(i)}
+                    >
+                      {slices.map((c, i) => (
+                        <Cell
+                          key={c.category}
+                          fill={c.color}
+                          style={{ transition: "opacity 0.2s", cursor: "pointer", outline: "none" }}
+                          opacity={hovered === null || hovered === i ? 1 : 0.3}
+                        />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                {/* Centre readout — follows the hovered slice */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-10">
+                  <p className="text-[11px] font-medium text-slate-400 truncate max-w-full">{focus ? focus.category : "Total spent"}</p>
+                  <p className="text-lg font-semibold text-slate-900 tabular">
+                    {symbol}{Math.round(focus ? focus.amount : totalSpend).toLocaleString()}
+                  </p>
+                  {focus && <p className="text-[11px] text-slate-500 tabular">{focus.percentage.toFixed(1)}%</p>}
+                </div>
+              </div>
 
-              {/* Top categories ranked */}
-              <div className="space-y-2">
-                {spendingByCategory!.slice(0, 5).map((c, i) => (
-                  <div key={c.category} className="flex items-center gap-2 text-xs">
-                    <span className="block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
+              {/* Categories ranked — doubles as the legend; hover syncs with the donut */}
+              <div className="space-y-0.5">
+                {slices.map((c, i) => (
+                  <div
+                    key={c.category}
+                    onMouseEnter={() => setHovered(i)}
+                    onMouseLeave={() => setHovered(null)}
+                    className={`flex items-center gap-2 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-default ${hovered === i ? "bg-slate-900/[0.04]" : ""}`}
+                  >
+                    <span className="block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.color }} />
                     <span className="text-slate-700 font-medium flex-1 truncate">{c.category}</span>
-                    <span className="text-slate-500 tabular-nums">{c.percentage.toFixed(0)}%</span>
-                    <span className="text-slate-900 font-semibold tabular-nums whitespace-nowrap">{symbol}{Math.round(c.amount).toLocaleString()}</span>
+                    <span className="text-slate-500 tabular">{c.percentage.toFixed(0)}%</span>
+                    <span className="text-slate-900 font-semibold tabular whitespace-nowrap">{symbol}{Math.round(c.amount).toLocaleString()}</span>
                   </div>
                 ))}
-                {spendingByCategory!.length > 5 && (
-                  <p className="text-[11px] text-slate-400 pl-4.5 pt-1">+ {spendingByCategory!.length - 5} more</p>
-                )}
               </div>
             </div>
           </Card>
@@ -745,13 +888,13 @@ function SpendingInsights({
 
         {/* Avg daily + top expenses callout */}
         <Card className="p-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Highlights</p>
+          <p className="text-sm font-semibold text-slate-800">Highlights</p>
           {avgDailySpend && avgDailySpend.total > 0 && (
             <div className="mt-3 pb-3 border-b border-slate-100">
               <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider flex items-center gap-1">
                 <Calendar className="h-3 w-3" /> Average daily spend
               </p>
-              <p className="text-xl font-bold text-slate-900 tracking-tight mt-0.5">
+              <p className="text-2xl font-semibold text-slate-900 tracking-tight mt-0.5 tabular">
                 {avgDailySpend.symbol}{Math.round(avgDailySpend.total).toLocaleString()}
               </p>
             </div>
@@ -785,19 +928,19 @@ function SpendingInsights({
       {hasDailyTrend && (
         <Card className="p-5 mt-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Daily flow this month</p>
+            <p className="text-sm font-semibold text-slate-800">Daily flow this month</p>
             <span className="text-[10px] text-slate-400">{activeCurrency}</span>
           </div>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={dailyTrend} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="gradIncome" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10B981" stopOpacity={0.45} />
-                  <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                  <stop offset="0%" stopColor={INCOME_COLOR} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={INCOME_COLOR} stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="gradExpense" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#F43F5E" stopOpacity={0.45} />
-                  <stop offset="100%" stopColor="#F43F5E" stopOpacity={0} />
+                  <stop offset="0%" stopColor={EXPENSE_COLOR} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={EXPENSE_COLOR} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
@@ -806,12 +949,16 @@ function SpendingInsights({
               <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={42}
                 tickFormatter={v => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}K` : String(v)} />
               <Tooltip
-                contentStyle={{ fontSize: 12, borderRadius: 12, border: "1px solid #E2E8F0", boxShadow: "0 8px 24px rgba(15,23,42,0.08)" }}
+                contentStyle={TOOLTIP_STYLE}
+                cursor={{ stroke: "#6366F1", strokeWidth: 1, strokeDasharray: "4 4" }}
                 formatter={((value: unknown) => Number(value ?? 0).toLocaleString()) as never}
                 labelFormatter={(label) => `Day ${label}`}
               />
-              <Area type="monotone" dataKey="income"  stroke="#10B981" strokeWidth={2} fill="url(#gradIncome)"  />
-              <Area type="monotone" dataKey="expense" stroke="#F43F5E" strokeWidth={2} fill="url(#gradExpense)" />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+              <Area type="monotone" dataKey="income"  name="Income"  stroke={INCOME_COLOR}  strokeWidth={2} fill="url(#gradIncome)"
+                activeDot={{ r: 4, stroke: "#fff", strokeWidth: 2 }} />
+              <Area type="monotone" dataKey="expense" name="Expense" stroke={EXPENSE_COLOR} strokeWidth={2} fill="url(#gradExpense)"
+                activeDot={{ r: 4, stroke: "#fff", strokeWidth: 2 }} />
             </AreaChart>
           </ResponsiveContainer>
         </Card>
@@ -840,18 +987,19 @@ function SixMonthTrend({
       <SectionTitle>Six-Month Trend</SectionTitle>
       <Card className="p-5">
         <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={data} barCategoryGap="20%">
+          <BarChart data={data} barCategoryGap="20%" barGap={2}>
             <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={50}
               tickFormatter={v => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}K` : String(v)} />
             <Tooltip
-              contentStyle={{ fontSize: 12, borderRadius: 12, border: "1px solid #E2E8F0", boxShadow: "0 8px 24px rgba(15,23,42,0.08)" }}
+              contentStyle={TOOLTIP_STYLE}
+              cursor={CURSOR_FILL}
               formatter={((value: unknown) => `${symbol}${Number(value ?? 0).toLocaleString()}`) as never}
             />
             <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-            <Bar dataKey="Income"   fill="#10B981" radius={[6, 6, 0, 0]} />
-            <Bar dataKey="Expenses" fill="#F43F5E" radius={[6, 6, 0, 0]} />
+            <Bar dataKey="Income"   fill={INCOME_COLOR}  radius={[4, 4, 0, 0]} maxBarSize={36} />
+            <Bar dataKey="Expenses" fill={EXPENSE_COLOR} radius={[4, 4, 0, 0]} maxBarSize={36} />
           </BarChart>
         </ResponsiveContainer>
       </Card>

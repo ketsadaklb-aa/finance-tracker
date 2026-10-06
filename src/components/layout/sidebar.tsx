@@ -2,131 +2,143 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  LayoutDashboard, ArrowUpDown, Users,
-  BookOpen, Wallet, DollarSign, Menu, X, LogOut, Shield, ListChecks, PenLine,
-} from "lucide-react";
+import { Menu, X, LogOut, Search, PanelLeftClose, PanelLeftOpen, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { visibleGroups, isActivePath, openCommandPalette } from "./nav-config";
+import { useUser, initials } from "./user-context";
 
-const adminNav = [
-  { href: "/",             label: "Dashboard",        icon: LayoutDashboard },
-  { href: "/accounts",     label: "Accounts",          icon: Wallet },
-  { href: "/transactions", label: "Transactions",      icon: ArrowUpDown },
-  { href: "/contacts",     label: "Contacts",          icon: Users },
-  { href: "/ledger",       label: "AR / AP Ledger",    icon: BookOpen },
-  { href: "/tasks",        label: "Tasks",             icon: ListChecks },
-  { href: "/notes",        label: "Notes",             icon: PenLine },
-];
-
-const memberNav = [
-  { href: "/ledger", label: "AR / AP Ledger", icon: BookOpen },
-  { href: "/tasks",  label: "Tasks",          icon: ListChecks },
-  { href: "/notes",  label: "Notes",          icon: PenLine },
-];
-
-function Logo() {
+function Logo({ compact }: { compact?: boolean }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center shadow-lg shrink-0">
-        <DollarSign className="h-4 w-4 text-white" />
+    <div className="flex items-center gap-3 min-w-0">
+      <div className="relative w-9 h-9 rounded-xl bg-brand flex items-center justify-center shadow-lg shadow-indigo-500/30 shrink-0">
+        <Sparkles className="h-4 w-4 text-white" />
+        <span className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/30" />
       </div>
-      <div>
-        <h1 className="text-white font-bold text-sm leading-tight">Super Personal App</h1>
-        <p className="text-blue-300 text-xs mt-0.5">Task · Finance</p>
-      </div>
+      {!compact && (
+        <div className="min-w-0">
+          <h1 className="text-slate-900 font-semibold text-sm leading-tight truncate">Super Personal</h1>
+          <p className="text-slate-400 text-[11px] mt-0.5">Tasks · Finance</p>
+        </div>
+      )}
     </div>
   );
 }
 
-function NavLinks({ onNavigate, isAdmin }: { onNavigate?: () => void; isAdmin: boolean }) {
-  const pathname = usePathname();
-  const nav = isAdmin ? adminNav : memberNav;
+function SearchButton({ compact }: { compact?: boolean }) {
+  const [mac, setMac] = useState(true);
+  useEffect(() => { setMac(/Mac|iPhone|iPad/.test(navigator.platform)); }, []);
+  if (compact) {
+    return (
+      <button
+        onClick={openCommandPalette}
+        title="Search (⌘K)"
+        className="mx-auto w-10 h-10 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-white/80 transition-colors"
+      >
+        <Search className="h-4 w-4" />
+      </button>
+    );
+  }
   return (
-    <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-      <p className="text-blue-400 text-xs font-semibold uppercase tracking-widest px-3 mb-3">Menu</p>
-      {nav.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href;
-        return (
-          <Link
-            key={href}
-            href={href}
-            onClick={onNavigate}
-            className={cn(
-              "nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium group",
-              active
-                ? "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
-                : "text-blue-200 hover:bg-white/10 hover:text-white"
-            )}
-          >
-            <div className={cn(
-              "w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors",
-              active ? "bg-white/20" : "bg-white/5 group-hover:bg-white/15"
-            )}>
-              <Icon className="h-3.5 w-3.5" />
-            </div>
-            <span>{label}</span>
-            {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
-          </Link>
-        );
-      })}
-      {isAdmin && (
-        <Link
-          href="/admin"
-          onClick={onNavigate}
-          className={cn(
-            "nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium group mt-2",
-            pathname === "/admin"
-              ? "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
-              : "text-blue-200 hover:bg-white/10 hover:text-white"
+    <button
+      onClick={openCommandPalette}
+      className="w-full flex items-center gap-2.5 rounded-xl border border-slate-200/70 bg-white/60 px-3 h-9 text-sm text-slate-400 hover:text-slate-600 hover:bg-white hover:border-slate-300/80 transition-all shadow-sm shadow-slate-900/[0.02]"
+    >
+      <Search className="h-3.5 w-3.5" />
+      <span className="flex-1 text-left">Search…</span>
+      <kbd className="text-[10px] font-medium text-slate-400 bg-slate-100 border border-slate-200 rounded-md px-1.5 py-0.5 font-sans">
+        {mac ? "⌘" : "Ctrl"} K
+      </kbd>
+    </button>
+  );
+}
+
+function NavLinks({ onNavigate, isAdmin, compact }: { onNavigate?: () => void; isAdmin: boolean; compact?: boolean }) {
+  const pathname = usePathname();
+  return (
+    <nav className={cn("flex-1 py-3 overflow-y-auto space-y-5", compact ? "px-2" : "px-3")}>
+      {visibleGroups(isAdmin).map(group => (
+        <div key={group.title}>
+          {!compact && (
+            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-[0.14em] px-3 mb-1.5">{group.title}</p>
           )}
-        >
-          <div className={cn(
-            "w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors",
-            pathname === "/admin" ? "bg-white/20" : "bg-white/5 group-hover:bg-white/15"
-          )}>
-            <Shield className="h-3.5 w-3.5" />
+          {compact && <div className="h-px bg-slate-200/70 mx-2 mb-2 first:hidden" />}
+          <div className="space-y-0.5">
+            {group.items.map(({ href, label, icon: Icon }) => {
+              const active = isActivePath(pathname, href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={onNavigate}
+                  title={compact ? label : undefined}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "nav-link relative flex items-center gap-3 rounded-xl text-sm font-medium group",
+                    compact ? "justify-center h-10 w-10 mx-auto" : "px-3 h-9",
+                    active
+                      ? "bg-white text-slate-900 shadow-sm shadow-slate-900/[0.06] ring-1 ring-slate-200/70"
+                      : "text-slate-500 hover:bg-white/70 hover:text-slate-900"
+                  )}
+                >
+                  {active && !compact && (
+                    <span className="absolute -left-3 top-2 bottom-2 w-1 rounded-r-full bg-brand" aria-hidden="true" />
+                  )}
+                  <Icon className={cn(
+                    "h-4 w-4 shrink-0 transition-colors",
+                    active ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600"
+                  )} />
+                  {!compact && <span className="truncate">{label}</span>}
+                </Link>
+              );
+            })}
           </div>
-          <span>Admin</span>
-          {pathname === "/admin" && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70" />}
-        </Link>
-      )}
+        </div>
+      ))}
     </nav>
   );
 }
 
-function SidebarFooter({ name, role, onLogout }: { name: string; role: string; onLogout: () => void }) {
-  return (
-    <div className="px-4 py-4 border-t border-white/10 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="min-w-0">
-          <p className="text-white text-sm font-medium truncate">{name}</p>
-          <p className="text-blue-300 text-xs capitalize">{role}</p>
-        </div>
-        <button
-          onClick={onLogout}
-          title="Sign out"
-          className="p-2 rounded-lg text-blue-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
-        >
+function UserCard({ compact, onLogout }: { compact?: boolean; onLogout: () => void }) {
+  const user = useUser();
+  const name = user?.name ?? "…";
+  const avatar = (
+    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 text-white text-xs font-semibold flex items-center justify-center ring-2 ring-white shadow-sm shrink-0">
+      {user ? initials(name) : ""}
+    </div>
+  );
+  if (compact) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-3 border-t border-slate-200/60">
+        {avatar}
+        <button onClick={onLogout} title="Sign out" className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors">
           <LogOut className="h-4 w-4" />
         </button>
       </div>
-      <div className="flex gap-1.5">
-        {["LAK", "THB", "USD"].map(c => (
-          <span key={c} className="text-xs text-blue-300 bg-white/5 rounded-md px-2 py-0.5 font-mono">{c}</span>
-        ))}
+    );
+  }
+  return (
+    <div className="m-3 mt-0 p-2.5 rounded-2xl bg-white/70 ring-1 ring-slate-200/60 flex items-center gap-3">
+      {avatar}
+      <div className="min-w-0 flex-1">
+        <p className="text-slate-900 text-sm font-medium truncate">{name}</p>
+        <p className="text-slate-400 text-[11px] capitalize">{user?.role ?? ""}</p>
       </div>
+      <button
+        onClick={onLogout}
+        title="Sign out"
+        className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0"
+      >
+        <LogOut className="h-4 w-4" />
+      </button>
     </div>
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggleCollapsed: () => void }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [user, setUser] = useState<{ name: string; role: string } | null>(null);
+  const user = useUser();
   const router = useRouter();
-
-  useEffect(() => {
-    fetch("/api/auth/me").then(r => r.ok ? r.json() : null).then(d => { if (d) setUser(d); });
-  }, []);
+  const isAdmin = user?.role === "admin";
 
   // Listen for bottom-nav "More" button to open the drawer
   useEffect(() => {
@@ -140,51 +152,69 @@ export function Sidebar() {
     router.push("/login");
   }
 
-  const footer = <SidebarFooter name={user?.name ?? "..."} role={user?.role ?? ""} onLogout={handleLogout} />;
-  const isAdmin = user?.role === "admin";
-
   return (
     <>
+      {/* Desktop: floating glass rail */}
       <aside
-        className="hidden md:flex fixed left-0 top-0 h-screen flex-col z-30"
-        style={{ background: "var(--sidebar)", width: "240px" }}
+        className={cn(
+          "glass hidden md:flex fixed left-3 top-3 bottom-3 flex-col z-30 rounded-3xl transition-[width] duration-300 ease-[var(--ease-out)]",
+          collapsed ? "w-[72px]" : "w-[248px]"
+        )}
       >
-        <div className="px-6 py-5 border-b border-white/10">
-          <Logo />
+        <div className={cn("flex items-center pt-4 pb-3", collapsed ? "flex-col gap-3 px-2" : "justify-between px-4")}>
+          <Logo compact={collapsed} />
+          <button
+            onClick={onToggleCollapsed}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white/80 transition-colors"
+          >
+            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
         </div>
-        <NavLinks isAdmin={isAdmin} />
-        {footer}
+        <div className={collapsed ? "px-2" : "px-3"}>
+          <SearchButton compact={collapsed} />
+        </div>
+        <NavLinks isAdmin={isAdmin} compact={collapsed} />
+        <UserCard compact={collapsed} onLogout={handleLogout} />
       </aside>
 
-      <header
-        className="md:hidden fixed top-0 left-0 right-0 h-14 z-30 flex items-center px-4 gap-3"
-        style={{ background: "var(--sidebar)" }}
-      >
-        <button
-          onClick={() => setMobileOpen(true)}
-          className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-        <Logo />
+      {/* Mobile: glass top bar */}
+      <header className="md:hidden fixed top-0 left-0 right-0 z-30 px-3 pt-[max(env(safe-area-inset-top),0.5rem)]">
+        <div className="glass h-12 rounded-2xl flex items-center px-2 gap-2">
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-white/80 transition-colors"
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="flex-1 min-w-0"><Logo /></div>
+          <button
+            onClick={openCommandPalette}
+            className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-white/80 transition-colors"
+            aria-label="Search"
+          >
+            <Search className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
       {mobileOpen && (
-        <div className="md:hidden fixed inset-0 z-40" onClick={() => setMobileOpen(false)}>
-          <div className="absolute inset-0 bg-black/50" />
+        <div className="md:hidden fixed inset-0 z-50" onClick={() => setMobileOpen(false)}>
+          <div className="sheet-overlay absolute inset-0 bg-slate-900/30 backdrop-blur-sm" data-state="open" />
           <aside
-            className="absolute left-0 top-0 h-screen w-72 flex flex-col"
-            style={{ background: "var(--sidebar)" }}
+            className="glass animate-slide-in absolute left-2 top-2 bottom-2 w-72 flex flex-col rounded-3xl"
             onClick={e => e.stopPropagation()}
           >
-            <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between">
+            <div className="px-4 pt-4 pb-3 flex items-center justify-between">
               <Logo />
-              <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10">
+              <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-white/80" aria-label="Close menu">
                 <X className="h-5 w-5" />
               </button>
             </div>
+            <div className="px-3"><SearchButton /></div>
             <NavLinks isAdmin={isAdmin} onNavigate={() => setMobileOpen(false)} />
-            {footer}
+            <UserCard onLogout={handleLogout} />
           </aside>
         </div>
       )}

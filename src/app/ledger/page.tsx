@@ -715,6 +715,27 @@ export default function LedgerPage() {
     fetch("/api/currencies").then(r => r.json()).then(d => { if (Array.isArray(d)) setCurrencies(d); });
   }, []);
 
+  // Deep link from the command palette: /ledger?contact=<id> expands and scrolls to that contact
+  const [focusContact, setFocusContact] = useState<string | null>(null);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("contact");
+    if (!id) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    setFocusContact(id);
+    setExpandedContacts(prev => new Set(prev).add(id));
+    setActiveTab(prev => ({ ...prev, [id]: prev[id] ?? "ar" }));
+  }, []);
+  useEffect(() => {
+    if (!focusContact) return;
+    const el = document.getElementById(`contact-${focusContact}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    el.classList.add("ring-2", "ring-indigo-400/60");
+    const t = setTimeout(() => el.classList.remove("ring-2", "ring-indigo-400/60"), 2000);
+    setFocusContact(null);
+    return () => clearTimeout(t);
+  }, [focusContact, receivables, payables]);
+
   // Group AR and AP by contact
   const allContactIds = Array.from(new Set([
     ...receivables.map(r => r.contact.id),
@@ -1088,7 +1109,7 @@ export default function LedgerPage() {
             const apOpen = ap.filter(p => p.status !== "settled").length;
 
             return (
-              <div key={contact.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+              <div key={contact.id} id={`contact-${contact.id}`} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm scroll-mt-24 transition-shadow">
                 {/* Contact header */}
                 <div className="flex items-center px-5 py-4 hover:bg-slate-50 transition-colors">
                   <button

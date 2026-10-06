@@ -114,6 +114,16 @@ export default function TransactionsPage() {
     return () => window.removeEventListener("openAddTransaction", handler);
   }, [openAdd]);
 
+  // Deep link from the command palette / mobile "+" on other pages: /transactions?add=1
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("add") !== "1") return;
+    window.history.replaceState(null, "", window.location.pathname);
+    // Wait a tick for the accounts fetch to seed the last-used account
+    const t = setTimeout(openAdd, 250);
+    return () => clearTimeout(t);
+  }, [openAdd]);
+
   function openEdit(tx: Transaction) {
     haptic(8);
     setEditTx(tx);

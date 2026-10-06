@@ -15,7 +15,7 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-10 w-full items-center justify-between rounded-xl border border-slate-200/90 bg-white px-3.5 py-2 text-sm shadow-sm shadow-slate-900/[0.02] transition-[border-color,box-shadow] placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+      "flex h-10 w-full items-center justify-between rounded-xl border border-slate-200/90 bg-white/80 px-3.5 py-2 text-sm shadow-sm shadow-slate-900/[0.02] transition-[border-color,box-shadow] placeholder:text-slate-400 hover:border-slate-300 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
       className
     )}
     {...props}
@@ -56,7 +56,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-xl shadow-slate-200/60",
+        "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-2xl border border-white bg-white/95 backdrop-blur-xl ring-1 ring-slate-200/70 text-slate-900 shadow-xl shadow-slate-900/10 animate-scale-in",
         position === "popper" && "data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1",
         className
       )}
@@ -88,13 +88,13 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-pointer select-none items-center rounded-xl py-2 pl-3 pr-8 text-sm outline-none transition-colors focus:bg-blue-50 focus:text-blue-700 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex w-full cursor-pointer select-none items-center rounded-xl py-2 pl-3 pr-8 text-sm outline-none transition-colors focus:bg-indigo-50 focus:text-indigo-700 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className
     )}
     {...props}
   >
     <span className="absolute right-2 flex h-4 w-4 items-center justify-center">
-      <SelectPrimitive.ItemIndicator><Check className="h-3.5 w-3.5 text-blue-600" /></SelectPrimitive.ItemIndicator>
+      <SelectPrimitive.ItemIndicator><Check className="h-3.5 w-3.5 text-indigo-600" /></SelectPrimitive.ItemIndicator>
     </span>
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
   </SelectPrimitive.Item>

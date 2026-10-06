@@ -108,7 +108,7 @@ export default function NoteCanvas({ noteId }: { noteId: string }) {
   if (!initial) return <div className="fixed inset-0 flex items-center justify-center bg-white z-50"><Loader2 className="h-6 w-6 animate-spin text-slate-300" /></div>;
 
   return (
-    <div className={`${notoLao.className} fixed inset-0 md:left-60 z-50 flex flex-col bg-white`}>
+    <div className={`${notoLao.className} fixed inset-0 md:left-[var(--sidebar-offset,272px)] z-50 flex flex-col bg-white`}>
       <div className="flex items-center gap-2 px-4 h-14 border-b border-slate-200 shrink-0">
         <Link href="/notes" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"><ChevronLeft className="h-5 w-5" /></Link>
         <input value={title} onChange={e => onTitle(e.target.value)}

@@ -38,18 +38,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map(t => (
           <div
             key={t.id}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium pointer-events-auto animate-toast
-              ${t.type === "success" ? "bg-white border border-green-100 text-slate-700" : "bg-white border border-red-100 text-slate-700"}`}
+            className="glass relative overflow-hidden flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium text-slate-700 pointer-events-auto animate-toast"
             style={{ minWidth: 280 }}
           >
             {t.type === "success"
-              ? <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
-              : <XCircle className="h-4 w-4 text-red-500 shrink-0" />}
+              ? <span className="w-6 h-6 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0"><CheckCircle className="h-4 w-4 text-emerald-500" /></span>
+              : <span className="w-6 h-6 rounded-full bg-rose-500/10 flex items-center justify-center shrink-0"><XCircle className="h-4 w-4 text-rose-500" /></span>}
             <span className="flex-1">{t.message}</span>
             {t.action && (
               <button
                 onClick={() => { t.action!.onClick(); dismiss(t.id); }}
-                className="text-blue-600 hover:text-blue-700 font-semibold text-sm px-2 py-0.5 rounded-md hover:bg-blue-50 transition-colors"
+                className="text-indigo-600 hover:text-indigo-700 font-semibold text-sm px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition-colors"
               >
                 {t.action.label}
               </button>
@@ -61,6 +60,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             >
               <X className="h-3.5 w-3.5" />
             </button>
+            {/* Countdown bar — shows how long until the toast (and its undo) disappears */}
+            <span
+              className="absolute left-0 bottom-0 h-0.5 bg-gradient-to-r from-blue-500 to-violet-500 origin-left"
+              style={{ width: "100%", animation: `toastCountdown ${t.duration}ms linear forwards` }}
+            />
           </div>
         ))}
       </div>
