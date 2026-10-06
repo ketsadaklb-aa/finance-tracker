@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, closestCorners, pointerWithin, useDroppable,
 } from "@dnd-kit/core";
@@ -13,7 +13,7 @@ const boardCollision: CollisionDetection = args => {
 };
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import { Task, TaskStatus, BoardColumn, columnStyle, groupByColumns } from "./types";
 import { TaskCard } from "./task-card";
 
@@ -29,6 +29,7 @@ function SortableCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void 
   return (
     <div
       ref={setNodeRef}
+      data-card
       style={{ transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
       {...attributes}
       {...listeners}
@@ -45,8 +46,35 @@ function Column({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.id });
   const style = columnStyle(col.id, index);
+
+  // Long columns scroll inside a capped height so rows below stay in view.
+  // Track overflow to show edge fades and a "N more" jump hint.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [edges, setEdges] = useState({ top: false, bottom: false, hidden: 0 });
+  const measure = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const top = el.scrollTop > 4;
+    const bottom = el.scrollTop + el.clientHeight < el.scrollHeight - 4;
+    // Count cards whose top edge is below the visible area
+    const viewBottom = el.getBoundingClientRect().bottom;
+    const hidden = bottom
+      ? Array.from(el.querySelectorAll("[data-card]")).filter(c => c.getBoundingClientRect().top > viewBottom - 8).length
+      : 0;
+    setEdges(prev => (prev.top === top && prev.bottom === bottom && prev.hidden === hidden ? prev : { top, bottom, hidden }));
+  }, []);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    Array.from(el.children).forEach(c => ro.observe(c));
+    return () => ro.disconnect();
+  }, [items.length, measure]);
+  const setRefs = useCallback((el: HTMLDivElement | null) => { scrollRef.current = el; setNodeRef(el); }, [setNodeRef]);
   return (
-    <div className="flex flex-col rounded-2xl bg-slate-50/70 border border-slate-200/70 min-h-[120px] w-full">
+    <div className="relative flex flex-col rounded-2xl bg-slate-50/70 border border-slate-200/70 min-h-[120px] w-full">
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`h-2 w-2 rounded-full shrink-0 ${style.dot}`} />
@@ -58,12 +86,28 @@ function Column({
           <Plus className="h-4 w-4" />
         </button>
       </div>
-      <div ref={setNodeRef} className={`flex-1 px-2.5 pb-2.5 space-y-2 rounded-b-2xl transition-colors ${isOver ? "bg-slate-100" : ""}`}>
+      <div
+        ref={setRefs}
+        onScroll={measure}
+        className={`flex-1 max-h-[min(62vh,34rem)] overflow-y-auto overscroll-contain px-2.5 pb-2.5 space-y-2 rounded-b-2xl transition-colors [scrollbar-width:thin] ${isOver ? "bg-slate-100" : ""}`}
+        style={{
+          maskImage: `linear-gradient(to bottom, ${edges.top ? "transparent 0, black 24px" : "black 0"}, ${edges.bottom ? "black calc(100% - 40px), transparent 100%" : "black 100%"})`,
+          WebkitMaskImage: `linear-gradient(to bottom, ${edges.top ? "transparent 0, black 24px" : "black 0"}, ${edges.bottom ? "black calc(100% - 40px), transparent 100%" : "black 100%"})`,
+        }}
+      >
         <SortableContext items={items.map(t => t.id)} strategy={verticalListSortingStrategy}>
           {items.map(t => <SortableCard key={t.id} task={t} onOpen={onOpen} />)}
         </SortableContext>
         {items.length === 0 && <p className="text-xs text-slate-300 text-center py-6">Drop here</p>}
       </div>
+      {edges.bottom && edges.hidden > 0 && (
+        <button
+          onClick={() => scrollRef.current?.scrollBy({ top: scrollRef.current.clientHeight * 0.8, behavior: "smooth" })}
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 rounded-full bg-white/90 backdrop-blur px-2.5 py-1 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/80 hover:text-slate-800 transition-colors animate-fade-in"
+        >
+          {edges.hidden} more <ChevronDown className="h-3 w-3" />
+        </button>
+      )}
     </div>
   );
 }
